@@ -8,6 +8,7 @@ import tap
 
 class Arguments(tap.Tap):
     root_dir: Path
+    tasks: str = None
 
 
 def main(root_dir, task):
@@ -46,6 +47,8 @@ def main(root_dir, task):
 if __name__ == '__main__':
     args = Arguments().parse_args()
     root_dir = str(args.root_dir.absolute())
-    tasks = [f for f in os.listdir(root_dir) if '.zip' not in f]
+
+    tasks = [f for f in os.listdir(root_dir) if '.zip' not in f] if args.tasks is None else args.tasks.split(',')
+    print(tasks)
     for task in tasks:
         main(root_dir, task)

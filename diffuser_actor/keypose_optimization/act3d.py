@@ -37,7 +37,7 @@ class Act3D(nn.Module):
                  num_sampling_level=3,
                  fine_sampling_ball_diameter=0.16,
                  regress_position_offset=False,
-                 use_instruction=False):
+                 use_instruction=False, **kwargs):
         super().__init__()
         assert backbone in ["resnet", "clip"]
         assert image_size in [(128, 128), (256, 256)]

@@ -16,6 +16,8 @@ seed=0
 checkpoint=train_logs/act3d_peract.pth
 
 num_ckpts=${#tasks[@]}
+
+trap "echo; exit" INT
 for ((i=0; i<$num_ckpts; i++)); do
     CUDA_LAUNCH_BLOCKING=1 python online_evaluation_rlbench/evaluate_policy.py \
     --tasks ${tasks[$i]} \
@@ -40,6 +42,6 @@ for ((i=0; i<$num_ckpts; i++)); do
     --max_steps 25 \
     --seed $seed \
     --gripper_loc_bounds_file $gripper_loc_bounds_file \
-    --gripper_loc_bounds_buffer 0.04
+    --gripper_loc_bounds_buffer 0.04 $@
 done
 

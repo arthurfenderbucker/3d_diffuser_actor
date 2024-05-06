@@ -19,6 +19,8 @@ relative_action=0
 seed=0
 checkpoint=train_logs/diffuser_actor_gnfactor.pth
 
+trap "echo; exit" INT
+
 num_ckpts=${#tasks[@]}
 for ((i=0; i<$num_ckpts; i++)); do
     CUDA_LAUNCH_BLOCKING=1 python online_evaluation_rlbench/evaluate_policy.py \
@@ -50,6 +52,6 @@ for ((i=0; i<$num_ckpts; i++)); do
     --gripper_loc_bounds_file $gripper_loc_bounds_file \
     --gripper_loc_bounds_buffer 0.08 \
     --interpolation_length $interpolation_length \
-    --dense_interpolation 1
+    --dense_interpolation 1 $@
 done
 
