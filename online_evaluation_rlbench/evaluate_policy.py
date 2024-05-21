@@ -172,6 +172,8 @@ def load_models(args):
                     args.regress_position_offset),
                 use_instruction=bool(args.use_instruction)
             ).to(device)
+    elif args.test_model == "peract":
+        print("peract")
     else:
         raise NotImplementedError
 

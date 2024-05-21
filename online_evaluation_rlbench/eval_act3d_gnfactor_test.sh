@@ -14,7 +14,7 @@ exp=act3d_gnfactor
 # place_shape_in_shape_sorter
 #easy tasks
 tasks=(
-    close_jar open_drawer sweep_to_dustpan_of_size meat_off_grill turn_tap slide_block_to_color_target put_item_in_drawer reach_and_drag push_buttons
+    push_buttons close_jar open_drawer sweep_to_dustpan_of_size meat_off_grill turn_tap slide_block_to_color_target put_item_in_drawer reach_and_drag
     # close_jar open_drawer sweep_to_dustpan_of_size # push_buttons #slide_block_to_color_target reach_and_drag
     )
 
