@@ -693,10 +693,10 @@ class RLBenchEnv:
                 demo = self.get_demo(task_str, variation, episode_index=demo_id)[0]
                 num_valid_demos += 1
             except Exception as e:
-                # print(colored(f"Couldnt load demo {demo_id} for {task_str} variation {variation}","red"))
-                # print(e)
-                # print()
-                # traceback.print_exc()
+                print(colored(f"Couldnt load demo {demo_id} for {task_str} variation {variation}","red"))
+                print(e)
+                print()
+                traceback.print_exc()
                 continue
 
             rgbs = torch.Tensor([]).to(device)

@@ -34,12 +34,12 @@ def main(root_dir, task):
             data2 = pickle.load(open(f'{root_dir}/{task}/variation{variation}/variation_descriptions.pkl', 'rb'))
             assert data1 == data2
         else:
-            call(['ln', '-s',
+            call(['ln', '-sfn',
                   f'{root_dir}/{task}/all_variations/episodes/episode{num}/variation_descriptions.pkl',
                   f'{root_dir}/{task}/variation{variation}/'])
 
         ep_id = len(seen_variations[variation]) - 1
-        call(['ln', '-s',
+        call(['ln', '-sfn',
               "{:s}/{:s}/all_variations/episodes/episode{:d}".format(root_dir, task, num),
               f'{root_dir}/{task}/variation{variation}/episodes/episode{ep_id}'])
 
