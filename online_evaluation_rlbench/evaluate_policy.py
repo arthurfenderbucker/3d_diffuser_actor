@@ -82,7 +82,7 @@ class Arguments(tap.Tap):
     generate_guidance_code: int = 0
     raw_policy: int = 0 #prevents loading checkpoint
     redis_pub_interval: int = 5 #transmition interval in frames, 0 means no transmission only key frames will be transmitted
-    guidance_func_file: str = "/home/abucker/benchmarks/3d_diffuser_actor/diffuser_actor/guidance/guidance_func.py"
+    guidance_func_file: str = "/home/abucker/motor_cortex/benchmarks/3d_diffuser_actor/diffuser_actor/guidance/guidance_func.py"
     rollouts_per_demo: int = 1
     reuse_code: int = 1
     skip_existing: int = 0
