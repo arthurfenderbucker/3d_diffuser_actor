@@ -23,13 +23,13 @@ from rlbench.backend.exceptions import InvalidActionError
 from rlbench.demo import Demo
 from pyrep.errors import IKError, ConfigurationPathError
 from pyrep.const import RenderMode
-import struct
 
 from termcolor import colored
 import time
 from datetime import datetime
 import cv2
-import clip
+from threading import Event
+
 
 try:
     import rospy
@@ -41,7 +41,8 @@ try:
 except ImportError:
     pass
 
-from motor_cortex.common.config import load_config as load_config_motor_cortex
+
+from motor_cortex.common.guidance_wrapper import GuidanceWrapper, GuidanceArguments
 
 
 ALL_RLBENCH_TASKS = [
@@ -113,8 +114,6 @@ class Mover:
             if collision_checking:
                 action_collision[-1] = 0
             obs, reward, terminate = self._task.step(action_collision)
-            # if self.redis_server is not None and self.redis_pub_interval > 0 and try_id % self.redis_pub_interval == 0:
-
 
             pos = obs.gripper_pose[:3]
             rot = obs.gripper_pose[3:7]
@@ -161,6 +160,7 @@ class Actioner:
         action_dim=7,
         predict_trajectory=True
     ):
+
         self._policy = policy
         self._instructions = instructions
         self._apply_cameras = apply_cameras
@@ -309,9 +309,11 @@ class RLBenchEnv:
         apply_cameras=("left_shoulder", "right_shoulder", "wrist", "front"),
         fine_sampling_ball_diameter=None,
         collision_checking=False,
-        server_args = None
     ):
 
+
+
+        
         # setup required inputs
         self.data_path = data_path
         self.apply_rgb = apply_rgb
@@ -332,46 +334,57 @@ class RLBenchEnv:
         )
 
 
-        if server_args is not None:
-            self.ros_server = server_args["ros_server"] if "ros_server" in server_args.keys() else None
-            self.redis_server = server_args["redis_server"] if "redis_server" in server_args.keys() else None
-            self.ak_topic = server_args["ak_topic"] if "ak_topic" in server_args.keys() else None
-            self.generate_guidance_code = server_args["generate_guidance_code"] if "generate_guidance_code" in server_args.keys() else False
-            self.use_guidance = server_args["use_guidance"] if "use_guidance" in server_args.keys() else False
-            self.rollouts_per_demo = server_args["rollouts_per_demo"] if "rollouts_per_demo" in server_args.keys() else 1
-            self.redis_pub_interval = server_args["redis_pub_interval"] if "redis_pub_interval" in server_args.keys() else 0
-            self.reuse_code = server_args["reuse_code"] if "reuse_code" in server_args.keys() else False
-            self.guidance_factor = server_args["guidance_factor"] if "guidance_factor" in server_args.keys() else 0
-            self.skip_existing = server_args["skip_existing"] if "skip_existing" in server_args.keys() else False
-        else:
-            self.ros_server = None
-            self.redis_server = None
-            self.ak_topic = None
-            self.generate_guidance_code = False
-            self.use_guidance = False
-            self.redis_pub_interval = 0
-            self.rollouts_per_demo = 1
-            self.reuse_code = False
-            self.guidance_factor = 0
-            self.skip_existing = False
+
+        # print(server_args)
+        # if server_args is not None:
+        #     self.ros_server = server_args["ros_server"] if "ros_server" in server_args.keys() else None
+        #     self.redis_server = server_args["redis_server"] if "redis_server" in server_args.keys() else None
+        #     self.ak_topic = server_args["ak_topic"] if "ak_topic" in server_args.keys() else None
+        #     self.generate_guidance_code = server_args["generate_guidance_code"] if "generate_guidance_code" in server_args.keys() else False
+        #     self.use_guidance = server_args["use_guidance"] if "use_guidance" in server_args.keys() else False
+        #     self.rollouts_per_demo = server_args["rollouts_per_demo"] if "rollouts_per_demo" in server_args.keys() else 1
+        #     self.pub_interval = server_args["pub_interval"] if "pub_interval" in server_args.keys() else 0
+        #     self.reuse_code = server_args["reuse_code"] if "reuse_code" in server_args.keys() else False
+        #     self.guidance_factor = server_args["guidance_factor"] if "guidance_factor" in server_args.keys() else 0
+        #     self.skip_existing = server_args["skip_existing"] if "skip_existing" in server_args.keys() else False
+        #     self.guidance_iter = server_args["guidance_iter"] if "guidance_iter" in server_args.keys() else 1
+        # else:
+        #     self.ros_server = None
+        #     self.redis_server = None
+        #     self.ak_topic = None
+        #     self.generate_guidance_code = False
+        #     self.use_guidance = False
+        #     self.pub_interval = 0
+        #     self.rollouts_per_demo = 1
+        #     self.reuse_code = False
+        #     self.guidance_factor = 0
+        #     self.skip_existing = False
+        #     self.guidance_iter = 1
         
 
-        cfg = load_config_motor_cortex(config_name='config')
+        # cfg = load_config_motor_cortex(config_name='config')
         
-        self.log_dir_format = cfg.default["log_dir_format"]
-        self.obs_count = 0
-        self.obs_id = 0
-        self.demo_id = 0
+        # self.log_dir_format = cfg.default["log_dir_format"]
+        # self.obs_count = 0
+        # self.obs_id = 0
+        # self.demo_id = 0
 
-        if self.ros_server:
-            self.ros_setup()
-
-        if self.redis_pub_interval > 0:
-            #################
-            self.action_mode.arm_action_mode.set_callable_each_step(self.relay_obs)
-            #################
+        # if self.ros_server:
+        #     self.ros_setup()
 
 
+        # ======== SETUP GUIDANCE =========
+        
+        guidance_args = GuidanceArguments().parse_args(known_only=True)
+
+        print(guidance_args)
+        self.guidance_wrapper = GuidanceWrapper(guidance_args)
+        self.rollouts_per_demo = self.guidance_wrapper.rollouts_per_demo
+
+        if self.guidance_wrapper.pub_interval > 0:
+            self.action_mode.arm_action_mode.set_callable_each_step(
+                self.guidance_wrapper.get_obs_relay_func(self.get_obs_action))
+        # ================================
 
         self.env = Environment(
             self.action_mode, str(data_path), self.obs_config,
@@ -379,55 +392,6 @@ class RLBenchEnv:
         )
         self.image_size = image_size # image size that is rendered and transmitted
         self.obs_image_size = obs_image_size # models input size
-        
-
-    def toRedis(self,a,n, meta=None):
-        """Store given Numpy array 'a' in Redis under key 'n'"""
-        if self.redis_server is None:
-            print("Redis server not available")
-            return
-        if meta is not None:
-            self.redis_server.publish(n+"_meta",json.dumps(meta))
-            self.redis_server.set(n+"_meta",json.dumps(meta))
-
-        h, w = a.shape[:2]
-        shape = struct.pack('>II',h,w)
-        encoded = shape + a.tobytes()
-        # self.redis_server.set(n,encoded)
-        self.redis_server.set(n,encoded)
-
-        return
-    
-    def ros_setup(self):
-        print("Setting up ROS")
-        rospy.init_node('rlbench', anonymous=True)
-        self.bridge = CvBridge()
-        self.publishers = {}
-
-    def toROS(self,a,n, meta=None):
-        """Store given Numpy array 'a' in Redis under key 'n'"""
-        
-        if not n in self.publishers.keys():
-            self.publishers[n] = rospy.Publisher(n, Image, queue_size=10)
-        self.publishers[n].publish(self.bridge.cv2_to_imgmsg(a, "bgr8"))
-
-        return
-
-    def transmit(self, image, name, meta ={}):
-        """
-        Transmit the image to Redis server.
-            :param image: incoming image
-            :param name: image name
-        """
-        if self.redis_server:
-            # if self.debug:
-            #     print("Transmitting to Redis")
-            self.toRedis(image, name, meta=meta)
-        if self.ros_server:
-            # if self.debug:
-            #     print("Transmitting to ROS")
-            self.toROS(image, name, meta=meta)
-        return
     
     def resize_image(self, image):
         """
@@ -436,39 +400,7 @@ class RLBenchEnv:
         if self.obs_image_size != self.image_size:
             image = cv2.resize(image, self.image_size, interpolation=cv2.INTER_LINEAR)
         return image
-    
-    def wait_redis_ak(self, timeout=20, id = 0) -> None:
-        if self.redis_server is None and self.ros_server is None:
-            print("Neither Redis or Ros server are available")
-            return
-        print(f"Waiting for AK with id: {id} ...", end=" ")
-        t_start = datetime.timestamp(datetime.now())
-        error = 0
-        try:
-            while True:
-                if self.redis_server is not None:
-                    ak = self.redis_server.get(self.ak_topic)
-                    if ak is not None:
-                        ak = json.loads(ak)
-                        if ak["id"] == id and "stamp" in ak.keys() and ak["stamp"] > datetime.timestamp(datetime.now())-0.1: 
-                            print("AK received redis")
-                            break
-                elif self.ros_server is not None:
-                    ak = rospy.wait_for_message(self.ak_topic, String, timeout=timeout)
-                    if ak is not None:
-                        ak = json.loads(ak)
-                        if ak["id"] == id and "stamp" in ak.keys() and ak["stamp"] > datetime.timestamp(datetime.now())-0.1: 
-                            print("AK received ros")
-                            break
-                if datetime.timestamp(datetime.now()) - t_start > timeout:
-                    print("Timeout wainting for aknowledgement")
-                    error = 1
-                    break
-                time.sleep(0.01)
-        except KeyboardInterrupt:
-            exit(0)
-        return error
-    
+
     def get_obs_action(self, obs, extra_meta = {}):
         """
         Fetch the desired state and action based on the provided demo.
@@ -476,38 +408,34 @@ class RLBenchEnv:
             :return: required observation and action list
         """
 
+        meta = self.guidance_wrapper.get_obs_meta(obs)
+        meta["robot_state"] = list(obs.gripper_pose)
+        meta.update(extra_meta)
+
         # fetch state
         state_dict = {"rgb": [], "depth": [], "pc": []}
-        meta = {"stamp": datetime.timestamp(datetime.now()), "id": self.obs_id, "variation": self.variation, "rollout_sulfix":self.rollouts_sulfix, 
-                "rollout":self.rollout, "step_id":self.step_id, "demo_id":self.demo_id, "robot_state": list(obs.gripper_pose)}
-        meta.update(extra_meta)
         
         for cam in self.apply_cameras:
             if self.apply_rgb:
                 rgb = getattr(obs, "{}_rgb".format(cam))
-                self.transmit(rgb,f"{cam}_rgb", meta=meta)
+                self.guidance_wrapper.transmit(rgb,f"{cam}_rgb", meta=meta)
                 rgb = self.resize_image(rgb)
                 state_dict["rgb"] += [rgb]
 
             if self.apply_depth:
                 depth = getattr(obs, "{}_depth".format(cam))
-                self.transmit(depth,f"{cam}_depth", meta=meta)
+                self.guidance_wrapper.transmit(depth,f"{cam}_depth", meta=meta)
                 depth = self.resize_image(depth)
                 state_dict["depth"] += [depth]
 
             if self.apply_pc:
                 pc = getattr(obs, "{}_point_cloud".format(cam))
-                self.transmit(pc,f"{cam}_point_cloud", meta=meta)
+                self.guidance_wrapper.transmit(pc,f"{cam}_point_cloud", meta=meta)
                 pc = self.resize_image(pc)
                 state_dict["pc"] += [pc]
 
-        error = False
-        if self.use_guidance:
-            error = self.wait_redis_ak(id = self.obs_id, timeout=300)
-        self.obs_id +=1
-        
+        error = self.guidance_wrapper.wait_redis_ak(timeout=300)
         if error:
-            print("Error waiting for aknowledgement")
             return None, None
                 
         # fetch action
@@ -590,16 +518,6 @@ class RLBenchEnv:
             random_selection=False
         )
         return demos
-
-    def relay_obs(self,obs):
-        """ Publish intermediate obs to redis or ros """
-        # print("during action: ", end="")
-        self.obs_count += 1
-        if self.obs_count % self.redis_pub_interval == 0:
-            self.get_obs_action(obs, extra_meta={"compute_pose":False}) #publish obs to redis or ros
-
-        # if self.rollout_path is not None:
-        #     self.log_observation(obs, self.rollout_path, self.obs_count)
     
     def evaluate_task_on_multiple_variations(
         self,
@@ -680,11 +598,10 @@ class RLBenchEnv:
         num_valid_demos = 0
         total_reward = 0
 
-        self.variation = variation
         for demo_id in range(num_demos):
-            self.demo_id = demo_id
-            # if variation == 0 or demo_id == 0:
-            #     continue
+            if variation == 0 or demo_id == 0:
+                continue
+            
             if verbose:
                 print()
                 print(f"Starting demo {demo_id}")
@@ -694,9 +611,9 @@ class RLBenchEnv:
                 num_valid_demos += 1
             except Exception as e:
                 print(colored(f"Couldnt load demo {demo_id} for {task_str} variation {variation}","red"))
-                print(e)
-                print()
-                traceback.print_exc()
+                # print(e)
+                # print()
+                # traceback.print_exc()
                 continue
 
             rgbs = torch.Tensor([]).to(device)
@@ -707,63 +624,41 @@ class RLBenchEnv:
             new_rollout = True
             guidance_func_file = None
             for rollout in range(self.rollouts_per_demo):
-
-                self.obs_id = 0 # reset obs id
-                self.step_id = 0
-                self.rollout = rollout
-                rollouts_sulfix = "_"+str(self.guidance_factor)+"-"+str(self.rollouts_per_demo)
-                self.rollouts_sulfix = rollouts_sulfix
                 
-                results = self.check_rollout_status(task_str, variation, demo_id, rollouts_sulfix, rollout)
-                if self.skip_existing and results is not None:
+                self.guidance_wrapper.set_experiment(task_str, variation, demo_id, rollout)
+                
+                results = self.guidance_wrapper.check_rollout_status()
+                if self.guidance_wrapper.skip_existing and results is not None:
                     print(results)
                     success_rate += results["success_rate"]
                     total_reward += results["max_reward"]
-                    print(colored(f"SKIPPING variation {variation} demo {demo_id} rollouts_sulfix {rollouts_sulfix} rollout {rollout}","yellow"))
+                    print(colored(f"SKIPPING variation {variation} demo {demo_id} rollouts_sulfix {self.guidance_wrapper.rollouts_sulfix} rollout {rollout}","yellow"))
                     continue
                 
 
                 descriptions, obs = task.reset_to_demo(demo)
                 actioner.load_episode(task_str, variation)
                 actioner._instr_text = descriptions[actioner._instr_idx]
+
+                self.guidance_wrapper.set_task_description(actioner._instr_text)
                 print(actioner._instr_text)
 
                 if new_rollout:
-                    # trigger code genereation
-
-                    info = {"task": task_str, "rollouts_sulfix": rollouts_sulfix, "demo_id": demo_id, "variation": variation, "description": descriptions[actioner._instr_idx], "reuse_code": self.reuse_code}
-                    print(info)
-
-                    if self.generate_guidance_code:
-                        print("First rollout - generating guidance code")
-                        print("Generating guidance code")
-                        # send redis message to start the guidance code generation
-                        
-                        self.redis_server.publish("start_autogen",json.dumps(info))
-                        self.redis_server.set("start_autogen",json.dumps(info))
+                    self.guidance_wrapper.trigger_code_generation()
 
                 move = Mover(task, max_tries=max_tries)
                 reward = 0.0
                 max_reward = 0.0
 
                 for step_id in range(max_steps):
-                    self.step_id = step_id
+                    self.guidance_wrapper.set_step_id(step_id)
                     # Fetch the current observation, and predict one action
                     rgb, pcd, gripper = self.get_rgb_pcd_gripper_from_obs(obs)
 
                     #update guidance func if required
-                    if step_id == 0 and hasattr(actioner._policy, "set_guidance_func_file") and self.use_guidance:
+                    if step_id == 0 and new_rollout:
+                        self.guidance_wrapper.add_guidance_to_policy(actioner._policy)
                         
-                        if new_rollout:
-                            print("Updating guidance function")
-                            guidance_func_file = self.retreive_guidance_code()
-
-                        if guidance_func_file is None:
-                            print("No guidance code received")
-                        else:
-                            print(colored(f"Using guidance code: {guidance_func_file}", "green")) 
-                            actioner._policy.set_guidance_func_file(guidance_func_file)
-
 
                     rgb = rgb.to(device)
                     pcd = pcd.to(device)
@@ -859,11 +754,9 @@ class RLBenchEnv:
                 )
                 
                 new_rollout = False
-                self.log_success_rate(task_str, variation, demo_id, rollouts_sulfix, self.rollout, success_rate, max_reward, num_valid_demos)
+                self.guidance_wrapper.log_success_rate(success_rate, max_reward, num_valid_demos)
 
             print("Rollouts completed")
-            # send redis message to update the guidance code.
-            # TODO
 
         # Compensate for failed demos
         if num_valid_demos == 0:
@@ -875,91 +768,7 @@ class RLBenchEnv:
         
         return success_rate, valid, num_valid_demos
     
-    def check_rollout_status(self, task_str, variation, demo_id, rollouts_sulfix, rollout_id):
-        log_tags = {"task": task_str.replace(" ", "_"), "variation": str(variation).replace(" ", "_"), "demo_id": str(demo_id)}
-        log_dir = self.log_dir_format.format(**log_tags)
-        summary_file = os.path.join(log_dir, "summary.json")
-        print(summary_file)
 
-        result = None
-        try: 
-            with open(summary_file) as f:
-                print(f'Checking task_str:{task_str} variation:{variation} demo_id:{demo_id} rollouts_sulfix:{rollouts_sulfix} rollout_id:{rollout_id}')
-                summary = json.load(f)
-                result = summary[task_str][str(variation)][str(demo_id)][rollouts_sulfix][str(rollout_id)]
-                print(result)
-        except:
-            pass
-        return result
-        
-
-    def log_success_rate(self, task_str, variation, demo_id, rollouts_sulfix ,rollout_id, success_rate, max_reward, num_valid_demos):
-
-        #updates the summary file for a given task, variation, demo_id, rollouts_sulfix and rollout_id
-        log_tags = {"task": task_str.replace(" ", "_"), "variation": str(variation).replace(" ", "_"), "demo_id": str(demo_id)}
-        log_dir = self.log_dir_format.format(**log_tags)
-
-        summary_file = os.path.join(log_dir, "summary.json")
-
-        os.makedirs(log_dir, exist_ok=True)
-
-        #load summary file if exists
-        if os.path.exists(summary_file):
-            with open(summary_file) as f:
-                summary = json.load(f)
-        else:
-            summary = {}
-        demo_id_str = str(demo_id)
-        variation_str = str(variation)
-        rollout_id_str = str(rollout_id)
-
-        summary[task_str] = {} if task_str not in summary.keys() else summary[task_str]
-        summary[task_str][variation_str] = {} if variation_str not in summary[task_str].keys() else summary[task_str][variation_str]
-        summary[task_str][variation_str][demo_id_str] = {} if demo_id_str not in summary[task_str][variation_str].keys() else summary[task_str][variation_str][demo_id_str]
-        summary[task_str][variation_str][demo_id_str][rollouts_sulfix] = {} if rollouts_sulfix not in summary[task_str][variation_str][demo_id_str].keys() else summary[task_str][variation_str][demo_id_str][rollouts_sulfix]
-        summary[task_str][variation_str][demo_id_str][rollouts_sulfix][rollout_id_str] = {} if rollout_id_str not in summary[task_str][variation_str][demo_id_str][rollouts_sulfix].keys() else summary[task_str][variation_str][demo_id_str][rollouts_sulfix][rollout_id_str]
-        summary[task_str][variation_str][demo_id_str][rollouts_sulfix][rollout_id_str]["success_rate"] = success_rate
-        summary[task_str][variation_str][demo_id_str][rollouts_sulfix][rollout_id_str]["max_reward"] = max_reward
-        summary[task_str][variation_str][demo_id_str][rollouts_sulfix][rollout_id_str]["num_valid_demos"] = num_valid_demos
-
-        with open(summary_file, "w") as f:
-            json.dump(summary, f, indent=4)
-        return
-
-    def retreive_guidance_code(self):
-        guidance_func_file = None
-        if self.redis_server is not None:
-
-            print("waiting for guidance func file")
-            start_time = datetime.timestamp(datetime.now())
-            timeout = 500
-            while datetime.timestamp(datetime.now()) - start_time < timeout:
-                msg = self.redis_server.get("guidance_func_file")
-                if msg is not None:
-                    msg_data = json.loads(msg)
-                    # print(msg_data, datetime.timestamp(datetime.now()))
-                    if datetime.timestamp(datetime.now()) - msg_data['stamp'] < 3:
-                        guidance_func_file = msg_data['guidance_func_file']
-                        break
-                    else:
-                        print(".", end="")
-                        # print(colored("guidance func file too old", "red"))
-
-                time.sleep(0.5)
-            print()
-            if guidance_func_file is None:
-                print(colored(f"Didn't receive a guidance func file in time ({timeout}s)", "red"))
-
-        elif self.ros_server is not None:
-            print("Waiting for guidance func file")
-            guidance_func_file = rospy.wait_for_message("guidance_func_file", String, timeout=2)
-            if guidance_func_file is not None:
-                guidance_func_file = guidance_func_file.data
-            else:
-                print(colored("Didn't receive a guidance func file in time", "red"))
-        else:
-            print(colored("redis_server and ros_server are disabled!", "red"))
-        return guidance_func_file
         
     def log_observation(self, obs, rollout_path, step):
         print("rollout_path: ", rollout_path)
@@ -1122,19 +931,6 @@ class RLBenchEnv:
         )
 
         return obs_config
-
-    # def find_best_feature_match(self, str_options: List[str], emb_query):
-    #     """
-    #     Find the best match for a given query among a list of options.
-    #         :param str_options: list of options
-    #         :param emb_query: query
-    #         :return: best match
-    #     """
-    #     emb_options = self.clip_model.encode_text(str_options)
-    #     emb_query = emb_query.unsqueeze(0)
-    #     scores = (100.0 * emb_query @ emb_options.T).squeeze(0)
-    #     best_match = scores.argmax().item()
-    #     return str_options[best_match], best_match, scores.cpu().numpy()
 
 # Identify way-point in each RLBench Demo
 def _is_stopped(demo, i, obs, stopped_buffer, delta):

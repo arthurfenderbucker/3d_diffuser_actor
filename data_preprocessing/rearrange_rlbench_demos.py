@@ -15,6 +15,10 @@ def main(root_dir, task):
     variations = os.listdir(f'{root_dir}/{task}/all_variations/episodes')
     seen_variations = {}
     for variation in variations:
+
+        # ignore .DS_Store
+        if variation == '.DS_Store':
+            continue
         num = int(variation.replace('episode', ''))
         variation = pickle.load(
             open(
@@ -23,7 +27,7 @@ def main(root_dir, task):
             )
         )
         os.makedirs(f'{root_dir}/{task}/variation{variation}/episodes', exist_ok=True)
-
+        print(variation, num)
         if variation not in seen_variations.keys():
             seen_variations[variation] = [num]
         else:

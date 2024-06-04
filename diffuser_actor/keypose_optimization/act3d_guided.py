@@ -21,8 +21,11 @@ class Act3DGuided(Act3D):
         else:
             guidance_func_file = "guidance/guidance_func.py"
         
-        self.guidance_factor = kwargs["guidance_factor"] if "guidance_factor" in kwargs else 1.0
-        self.stochastic = kwargs["stochastic"] if "stochastic" in kwargs else False
+        # self.guidance_factor = kwargs["guidance_factor"] if "guidance_factor" in kwargs else 1.0
+        # self.stochastic = kwargs["stochastic"] if "stochastic" in kwargs else False
+
+        self.guidance_factor = 0.0
+        self.stochastic = False
 
         self.guidance_layer = GuidanceLayer(
             guidance_func_file=guidance_func_file,
@@ -30,9 +33,15 @@ class Act3DGuided(Act3D):
             score_to_output=self.score_to_output,
             stochastic=self.stochastic
         )
-    
+    def set_guidance_params(self, guidance_factor=0.0, stochastic=False):
+        self.guidance_factor = guidance_factor
+        self.stochastic = stochastic
+        self.guidance_layer.stochastic = stochastic
+
     def set_guidance_func_file(self, guidance_func_file):
+        
         print("!!!!!!!!!!!!!!!!Setting guidance_func_file: ", guidance_func_file)
+        
         del self.guidance_layer
         self.guidance_func_file = guidance_func_file
         self.guidance_layer = GuidanceLayer(
@@ -41,6 +50,13 @@ class Act3DGuided(Act3D):
             score_to_output=self.score_to_output,
             stochastic=self.stochastic
         )
+        # check if the guidance_func was loaded
+        if self.guidance_layer.guidance_func is None:
+            print("!!!!!!!!!!!!!!!!!!!!!!Error: guidance_func is None")
+            return True
+        return False
+
+
     
 
     def forward(self, visible_rgb, visible_pcd, instruction, curr_gripper, gt_action=None):

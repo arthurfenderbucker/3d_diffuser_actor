@@ -1,4 +1,12 @@
 """Online evaluation script on RLBench."""
+import sys, signal # handling interruptions
+
+def signal_handler(signal, frame):
+    print("\nprogram exiting gracefully")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
 import random
 from typing import Tuple, Optional
 from pathlib import Path
@@ -12,13 +20,14 @@ import tap
 from diffuser_actor.keypose_optimization.act3d_guided import Act3DGuided
 from diffuser_actor.keypose_optimization.act3d import Act3D
 from diffuser_actor.trajectory_optimization.diffuser_actor import DiffuserActor
+from diffuser_actor.trajectory_optimization.diffuser_actor_guided import DiffuserActorGuided
+
 from utils.common_utils import (
     load_instructions,
     get_gripper_loc_bounds,
     round_floats
 )
 from utils.utils_with_rlbench import RLBenchEnv, Actioner, load_episodes
-import sys, signal # handling interruptions
 
 class Arguments(tap.Tap):
     checkpoint: Path = ""
@@ -73,19 +82,23 @@ class Arguments(tap.Tap):
     use_instruction: int = 1
     rotation_parametrization: str = '6D'
 
-    # guidance parameters
-    ros: int = 0
-    redis: int = 0 # transmits data using redis server
-    ak_topic: str = 'perception_ak'
+    # # guidance parameters
+    # ros: int = 0
+    # ak_topic: str = 'perception_ak'
     use_guidance: int = 0
-    guidance_factor: float = 0.5
-    generate_guidance_code: int = 0
-    raw_policy: int = 0 #prevents loading checkpoint
-    redis_pub_interval: int = 5 #transmition interval in frames, 0 means no transmission only key frames will be transmitted
-    guidance_func_file: str = "/home/abucker/motor_cortex/benchmarks/3d_diffuser_actor/diffuser_actor/guidance/guidance_func.py"
-    rollouts_per_demo: int = 1
-    reuse_code: int = 1
-    skip_existing: int = 0
+    # guidance_factor: float = 0.5
+    # generate_guidance_code: int = 0
+    # raw_policy: int = 0 #prevents loading checkpoint
+    # pub_interval: int = 5 #transmition interval in frames, 0 means no transmission only key frames will be transmitted
+    # guidance_func_file: str = "/home/abucker/motor_cortex/benchmarks/3d_diffuser_actor/diffuser_actor/guidance/guidance_func.py"
+    # rollouts_per_demo: int = 1
+    # reuse_code: int = 1
+    # skip_existing: int = 0
+    # guidance_iter: int = 1
+
+    # redis: int = 0 # transmits data using redis server
+    # redis_host: str = "localhost"
+    # redis_port: int = 6379 
 
 
 def load_models(args):
@@ -105,20 +118,36 @@ def load_models(args):
     )
 
     if args.test_model == "3d_diffuser_actor":
-        model = DiffuserActor(
-            backbone=args.backbone,
-            image_size=tuple(int(x) for x in args.image_size.split(",")),
-            embedding_dim=args.embedding_dim,
-            num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
-            use_instruction=bool(args.use_instruction),
-            fps_subsampling_factor=args.fps_subsampling_factor,
-            gripper_loc_bounds=gripper_loc_bounds,
-            rotation_parametrization=args.rotation_parametrization,
-            diffusion_timesteps=args.diffusion_timesteps,
-            nhist=args.num_history,
-            relative=bool(args.relative_action),
-            lang_enhanced=bool(args.lang_enhanced),
-        )
+        if args.use_guidance:
+            model = DiffuserActorGuided(
+                backbone=args.backbone,
+                image_size=tuple(int(x) for x in args.image_size.split(",")),
+                embedding_dim=args.embedding_dim,
+                num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
+                use_instruction=bool(args.use_instruction),
+                fps_subsampling_factor=args.fps_subsampling_factor,
+                gripper_loc_bounds=gripper_loc_bounds,
+                rotation_parametrization=args.rotation_parametrization,
+                diffusion_timesteps=args.diffusion_timesteps,
+                nhist=args.num_history,
+                relative=bool(args.relative_action),
+                lang_enhanced=bool(args.lang_enhanced),
+            )
+        else:
+            model = DiffuserActor(
+                backbone=args.backbone,
+                image_size=tuple(int(x) for x in args.image_size.split(",")),
+                embedding_dim=args.embedding_dim,
+                num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
+                use_instruction=bool(args.use_instruction),
+                fps_subsampling_factor=args.fps_subsampling_factor,
+                gripper_loc_bounds=gripper_loc_bounds,
+                rotation_parametrization=args.rotation_parametrization,
+                diffusion_timesteps=args.diffusion_timesteps,
+                nhist=args.num_history,
+                relative=bool(args.relative_action),
+                lang_enhanced=bool(args.lang_enhanced),
+            )
 
     elif args.test_model == "act3d":
         if args.use_guidance:
@@ -145,8 +174,6 @@ def load_models(args):
                 regress_position_offset=bool(
                     args.regress_position_offset),
                 use_instruction=bool(args.use_instruction),
-                guidance_factor=args.guidance_factor,
-                stochastic=True if args.rollouts_per_demo > 1 else False,
             ).to(device)
         else:
             model = Act3D(
@@ -189,44 +216,13 @@ def load_models(args):
     return model
 
 
-if __name__ == "__main__":
+def main():
     # Arguments
-
-
-    def signal_handler(signal, frame):
-        print("\nprogram exiting gracefully")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    args = Arguments().parse_args()
+    args = Arguments().parse_args(known_only=True)
     args.cameras = tuple(x for y in args.cameras for x in y.split(","))
     print("Arguments:")
     print(args)
     print("-" * 100)
-    # Save results here
-    if args.use_guidance:
-        output_path = str(args.output_file).split('/')
-        output_file = os.path.dirname(os.path.dirname(str(args.output_file))) + f"_guided-{args.use_guidance}_f-{args.guidance_factor}/"+"/".join(output_path[-2:])
-    else:
-        output_file = args.output_file
-        
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    print("output path:", os.path.dirname(output_file))
-
-    # # # Ros setup
-    if args.ros:
-        import logging
-        logging._srcfile = None
-        import rospy
-        print("Initializing ROS node")
-        rospy.init_node("rlbench_online_evaluation")
-        rospy.loginfo("ROS node initialized")
-
-    r = None
-    if args.redis:
-        import redis
-        r = redis.StrictRedis(host='localhost', port=6379, db=0)
 
     # Seeds
     torch.manual_seed(args.seed)
@@ -246,17 +242,25 @@ if __name__ == "__main__":
         headless=bool(args.headless),
         apply_cameras=args.cameras,
         collision_checking=bool(args.collision_checking),
-        server_args = {"ros_server": args.ros,
-                       "redis_server": r,
-                       "ak_topic": args.ak_topic,
-                       "generate_guidance_code":args.generate_guidance_code,
-                       "use_guidance": args.use_guidance,
-                       "redis_pub_interval": args.redis_pub_interval,
-                       "rollouts_per_demo": args.rollouts_per_demo,
-                       "guidance_factor": args.guidance_factor,
-                       "reuse_code": args.reuse_code,
-                       "skip_existing": args.skip_existing} if args.redis else None,
+        # server_args = {"ros_server": args.ros,
+        #                "redis_server": r,
+        #                "ak_topic": args.ak_topic,
+        #                "generate_guidance_code":args.generate_guidance_code,
+        #                "use_guidance": args.use_guidance,
+        #                "pub_interval": args.pub_interval,
+        #                "rollouts_per_demo": args.rollouts_per_demo,
+        #                "guidance_factor": args.guidance_factor,
+        #                "reuse_code": args.reuse_code,
+        #                "guidance_iter": args.guidance_iter,
+        #                "skip_existing": args.skip_existing} if args.redis else None,
     )
+
+
+    # Save results here
+    output_file = env.guidance_wrapper.change_outputfile(args.output_file) 
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    print("output path:", os.path.dirname(output_file))
+
 
     instruction = load_instructions(args.instructions)
     if instruction is None:
@@ -273,6 +277,7 @@ if __name__ == "__main__":
     task_success_rates = {}
 
     for task_str in args.tasks:
+        print("starting task:", task_str)
         var_success_rates = env.evaluate_task_on_multiple_variations(
             task_str,
             max_steps=(
@@ -299,5 +304,10 @@ if __name__ == "__main__":
         )
 
         task_success_rates[task_str] = var_success_rates
+        print(output_file)
         with open(output_file, "w") as f:
             json.dump(round_floats(task_success_rates), f, indent=4)
+
+
+if __name__ == '__main__':
+    main()

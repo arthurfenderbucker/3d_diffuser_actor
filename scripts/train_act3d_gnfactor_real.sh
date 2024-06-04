@@ -1,7 +1,7 @@
 main_dir=Act3d_18Peract_20Demo_10GNFactortask
 
-dataset=data/peract/Peract_packaged/train
-valset=data/peract/Peract_packaged/val
+dataset=data/peract/Peract_packaged/real
+valset=data/peract/Peract_packaged/real
 
 lr=1e-4
 num_ghost_points=1000
@@ -13,7 +13,7 @@ max_episodes_per_task=20
 
 CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node $ngpus --master_port $RANDOM \
     main_keypose.py \
-    --tasks close_jar open_drawer sweep_to_dustpan_of_size meat_off_grill turn_tap slide_block_to_color_target put_item_in_drawer reach_and_drag push_buttons stack_blocks \
+    --tasks push_buttons \
     --dataset $dataset \
     --valset $valset \
     --instructions instructions/peract/instructions.pkl \
