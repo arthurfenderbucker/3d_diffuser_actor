@@ -1,7 +1,11 @@
-# Action Diffusion with 3D Scene Representations
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/3d-diffuser-actor-policy-diffusion-with-3d/zero-shot-generalization-on-calvin)](https://paperswithcode.com/sota/zero-shot-generalization-on-calvin?p=3d-diffuser-actor-policy-diffusion-with-3d)
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/3d-diffuser-actor-policy-diffusion-with-3d/robot-manipulation-on-rlbench)](https://paperswithcode.com/sota/robot-manipulation-on-rlbench?p=3d-diffuser-actor-policy-diffusion-with-3d)
+
+
+# 3D Diffuser Actor: Policy Diffusion with 3D Scene Representations
 By [Tsung-Wei Ke*](https://twke18.github.io/), [Nikolaos Gkanatsios*](https://nickgkan.github.io/) and [Katerina Fragkiadaki](https://www.cs.cmu.edu/~katef/)
 
-Official implementation of ["Action Diffusion with 3D Scene Representations"]().
+Official implementation of ["3D Diffuser Actor: Policy Diffusion with 3D Scene Representations"](https://arxiv.org/abs/2402.10885).
 
 This code base also includes our re-implementation of ["Act3D: 3D Feature Field Transformers for Multi-Task Robotic Manipulation"](https://arxiv.org/abs/2306.17817).  We provide trained model weights for both methods.
 
@@ -35,7 +39,7 @@ Create a conda environment with the following command:
 > pip install diffusers["torch"]
 
 # install dgl (https://www.dgl.ai/pages/start.html)
-> pip install dgl -f https://data.dgl.ai/wheels/cu116/dgl-1.1.3%2Bcu116-cp38-cp38-manylinux1_x86_64.whl
+>  pip install dgl==1.1.3+cu116 -f https://data.dgl.ai/wheels/cu116/dgl-1.1.3%2Bcu116-cp38-cp38-manylinux1_x86_64.whl
 
 # install flash attention (https://github.com/Dao-AILab/flash-attention#installation-and-features)
 > pip install packaging
@@ -77,6 +81,8 @@ Remember to use the latest `calvin_env` module, which fixes bugs of `turn_off_le
 > cd RLBench; git checkout -b peract --track origin/peract; pip install -r requirements.txt; pip install -e .; cd ..;
 ```
 
+Remember to modify the success condition of `close_jar` task in RLBench, as the original condition is incorrect.  See this [pull request](https://github.com/MohitShridhar/RLBench/pull/1) for more detail.  
+
 # Data Preparation
 
 See [Preparing RLBench dataset](./docs/DATA_PREPARATION_RLBENCH.md) and [Preparing CALVIN dataset](./docs/DATA_PREPARATION_CALVIN.md).
@@ -89,6 +95,11 @@ We provide our scripts for encoding language instructions with CLIP Text Encoder
 > python data_preprocessing/preprocess_calvin_instructions.py --output instructions/calvin_task_ABC_D/validation.pkl --model_max_length 16 --annotation_path ./calvin/dataset/task_ABC_D/validation/lang_annotations/auto_lang_ann.npy
 
 > python data_preprocessing/preprocess_calvin_instructions.py --output instructions/calvin_task_ABC_D/training.pkl --model_max_length 16 --annotation_path ./calvin/dataset/task_ABC_D/training/lang_annotations/auto_lang_ann.npy
+```
+
+**Note:** We update our scripts for encoding language instructions on RLBench.
+```
+> python data_preprocessing/preprocess_rlbench_instructions.py  --tasks place_cups close_jar insert_onto_square_peg light_bulb_in meat_off_grill open_drawer place_shape_in_shape_sorter place_wine_at_rack_location push_buttons put_groceries_in_cupboard put_item_in_drawer put_money_in_safe reach_and_drag slide_block_to_color_target stack_blocks stack_cups sweep_to_dustpan_of_size turn_tap --output instructions.pkl
 ```
 
 # Model Zoo
@@ -112,6 +123,10 @@ First, donwload the weights and put under `train_logs/`
 * For RLBench, run the bashscripts to test the policy.  See [Getting started with RLBench](./docs/GETTING_STARTED_RLBENCH.md#step-3-test-the-policy) for detail.
 * For CALVIN, you can run [this bashcript](./scripts/test_trajectory_calvin.sh).
 
+**Important note:** Our released model weights of 3D Diffuser Actor assume input quaternions are in `wxyz` format.  Yet, we didn't notice that CALVIN and RLBench simulation use different quaternion formats (`wxyz` and `xyzw`).  We have updated our code base with an additional argument `quaternion_format` to switch between these two formats.  We have verified the change by re-training and testing 3D Diffuser Actor on GNFactor with `xyzw` quaternions.  The model achieves similar performance as the released checkpoint.  Please see this [post](https://github.com/nickgkan/3d_diffuser_actor/issues/3#issue-2164855979) for more detail.
+
+For users to train 3D Diffuser Actor from scratch, we update the training scripts with the correct `xyzw` quaternion format.  For users to test our released model, we keep the `wxyz` quaternion format in the testing scripts ([Peract](./online_evaluation_rlbench/eval_peract.sh), [GNFactor](./online_evaluation_rlbench/eval_gnfactor.sh)).
+
 
 # Getting started
 
@@ -119,11 +134,11 @@ See [Getting started with RLBench](./docs/GETTING_STARTED_RLBENCH.md) and [Getti
 
 
 # Citation
-If you find this code useful for your research, please consider citing our paper *Action Diffusion with 3D Scene Representations*.
+If you find this code useful for your research, please consider citing our paper ["3D Diffuser Actor: Policy Diffusion with 3D Scene Representations"](https://arxiv.org/abs/2402.10885).
 ```
 @article{3d_diffuser_actor,
   author = {Ke, Tsung-Wei and Gkanatsios, Nikolaos and Fragkiadaki, Katerina},
-  title = {Action Diffusion with 3D Scene Representations},
+  title = {3D Diffuser Actor: Policy Diffusion with 3D Scene Representations},
   journal = {Arxiv},
   year = {2024}
 }

@@ -81,6 +81,25 @@ class Arguments(tap.Tap):
     num_vis_ins_attn_layers: int = 2
     use_instruction: int = 1
     rotation_parametrization: str = '6D'
+    quaternion_format: str = 'xyzw'
+
+    # # guidance parameters
+    # ros: int = 0
+    # ak_topic: str = 'perception_ak'
+    use_guidance: int = 0
+    # guidance_factor: float = 0.5
+    # generate_guidance_code: int = 0
+    # raw_policy: int = 0 #prevents loading checkpoint
+    # pub_interval: int = 5 #transmition interval in frames, 0 means no transmission only key frames will be transmitted
+    # guidance_func_file: str = "/home/abucker/motor_cortex/benchmarks/3d_diffuser_actor/diffuser_actor/guidance/guidance_func.py"
+    # rollouts_per_demo: int = 1
+    # reuse_code: int = 1
+    # skip_existing: int = 0
+    # guidance_iter: int = 1
+
+    # redis: int = 0 # transmits data using redis server
+    # redis_host: str = "localhost"
+    # redis_port: int = 6379 
 
     # # guidance parameters
     # ros: int = 0
@@ -118,37 +137,21 @@ def load_models(args):
     )
 
     if args.test_model == "3d_diffuser_actor":
-        if args.use_guidance:
-            model = DiffuserActorGuided(
-                backbone=args.backbone,
-                image_size=tuple(int(x) for x in args.image_size.split(",")),
-                embedding_dim=args.embedding_dim,
-                num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
-                use_instruction=bool(args.use_instruction),
-                fps_subsampling_factor=args.fps_subsampling_factor,
-                gripper_loc_bounds=gripper_loc_bounds,
-                rotation_parametrization=args.rotation_parametrization,
-                diffusion_timesteps=args.diffusion_timesteps,
-                nhist=args.num_history,
-                relative=bool(args.relative_action),
-                lang_enhanced=bool(args.lang_enhanced),
-            )
-        else:
-            model = DiffuserActor(
-                backbone=args.backbone,
-                image_size=tuple(int(x) for x in args.image_size.split(",")),
-                embedding_dim=args.embedding_dim,
-                num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
-                use_instruction=bool(args.use_instruction),
-                fps_subsampling_factor=args.fps_subsampling_factor,
-                gripper_loc_bounds=gripper_loc_bounds,
-                rotation_parametrization=args.rotation_parametrization,
-                diffusion_timesteps=args.diffusion_timesteps,
-                nhist=args.num_history,
-                relative=bool(args.relative_action),
-                lang_enhanced=bool(args.lang_enhanced),
-            )
-
+        model = DiffuserActor(
+            backbone=args.backbone,
+            image_size=tuple(int(x) for x in args.image_size.split(",")),
+            embedding_dim=args.embedding_dim,
+            num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
+            use_instruction=bool(args.use_instruction),
+            fps_subsampling_factor=args.fps_subsampling_factor,
+            gripper_loc_bounds=gripper_loc_bounds,
+            rotation_parametrization=args.rotation_parametrization,
+            quaternion_format=args.quaternion_format,
+            diffusion_timesteps=args.diffusion_timesteps,
+            nhist=args.num_history,
+            relative=bool(args.relative_action),
+            lang_enhanced=bool(args.lang_enhanced),
+        )
     elif args.test_model == "act3d":
         if args.use_guidance:
             print("Using guidance")
