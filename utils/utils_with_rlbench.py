@@ -377,7 +377,7 @@ class RLBenchEnv:
         
         guidance_args = GuidanceArguments().parse_args(known_only=True)
 
-        print(guidance_args)
+        # print(guidance_args)
         self.guidance_wrapper = GuidanceWrapper(guidance_args)
         self.rollouts_per_demo = self.guidance_wrapper.rollouts_per_demo
 
@@ -599,8 +599,6 @@ class RLBenchEnv:
         total_reward = 0
 
         for demo_id in range(num_demos):
-            if variation == 0 or demo_id == 0:
-                continue
             
             if verbose:
                 print()
@@ -721,6 +719,10 @@ class RLBenchEnv:
                             obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
 
                         max_reward = max(max_reward, reward)
+                        
+                        # -------- LOGGING guidance --------
+                        self.guidance_wrapper.publish_guidance_info(actioner._policy)
+                        # ----------------------------------
 
                         if reward == 1:
                             success_rate += 1

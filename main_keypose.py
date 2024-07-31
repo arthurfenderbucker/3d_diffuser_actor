@@ -193,7 +193,7 @@ class TrainTester(BaseTrainTester):
         """Run a single training step."""
         if step_id % self.args.accumulate_grad_batches == 0:
             optimizer.zero_grad()
-
+        print("Step", step_id)
         # Forward pass
         out = model(
             sample["rgbs"],
@@ -203,21 +203,21 @@ class TrainTester(BaseTrainTester):
             # Provide ground-truth action to bias ghost point sampling at training time
             gt_action=sample["action"] if self.args.use_ground_truth_position_for_sampling_train else None
         )
-
+        print("done forward pass")
         # Backward pass
         loss = criterion.compute_loss(out, sample)
         loss = sum(list(loss.values()))
         loss.backward()
-
+        print("done backward pass")
         # Update
         if step_id % self.args.accumulate_grad_batches == self.args.accumulate_grad_batches - 1:
             optimizer.step()
-
+        print("done optimizer step")
         # Log
         if dist.get_rank() == 0 and (step_id + 1) % self.args.val_freq == 0:
             self.writer.add_scalar("lr", self.args.lr, step_id)
             self.writer.add_scalar("train-loss/noise_mse", loss, step_id)
-
+        print("done step", step_id)
     @torch.no_grad()
     def evaluate_nsteps(self, model, criterion, loader, step_id, val_iters,
                         split='val'):
@@ -225,7 +225,7 @@ class TrainTester(BaseTrainTester):
         values = {}
         device = next(model.parameters()).device
         model.eval()
-
+        print(f"Running {split} evaluation for {val_iters} iters")
         for i, sample in enumerate(loader):
             if i == val_iters:
                 break

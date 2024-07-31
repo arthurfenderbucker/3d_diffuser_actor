@@ -14,7 +14,7 @@ exp=act3d_gnfactor
 # place_shape_in_shape_sorter
 #easy tasks
 tasks=(
-    push_buttons # close_jar # open_drawer sweep_to_dustpan_of_size # meat_off_grill turn_tap slide_block_to_color_target put_item_in_drawer reach_and_drag
+    push_buttons close_jar slide_block_to_color_target # open_drawer sweep_to_dustpan_of_size # meat_off_grill turn_tap slide_block_to_color_target put_item_in_drawer reach_and_drag
     # close_jar open_drawer sweep_to_dustpan_of_size # push_buttons #slide_block_to_color_target reach_and_drag
     )
 
@@ -58,7 +58,7 @@ for ((i=0; i<$num_ckpts; i++)); do
     --output_file eval_logs/$exp/seed$seed/${tasks[$i]}.json  \
     --use_instruction $use_instruction \
     --instructions instructions/peract/instructions.pkl \
-    --variations {4..5} \
+    --variations {1..60} \
     --max_tries $max_tries \
     --max_steps 20 \
     --seed $seed \
