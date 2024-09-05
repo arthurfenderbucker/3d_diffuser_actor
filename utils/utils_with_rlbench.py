@@ -25,10 +25,10 @@ from pyrep.errors import IKError, ConfigurationPathError
 from pyrep.const import RenderMode
 
 from termcolor import colored
-import time
-from datetime import datetime
+
+qt_path = os.environ['QT_QPA_PLATFORM_PLUGIN_PATH']
 import cv2
-from threading import Event
+os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_path
 
 
 try:
@@ -312,8 +312,6 @@ class RLBenchEnv:
     ):
 
 
-
-        
         # setup required inputs
         self.data_path = data_path
         self.apply_rgb = apply_rgb
@@ -332,43 +330,7 @@ class RLBenchEnv:
             arm_action_mode=EndEffectorPoseViaPlanning(collision_checking=collision_checking),
             gripper_action_mode=Discrete()
         )
-
-
-
-        # print(server_args)
-        # if server_args is not None:
-        #     self.ros_server = server_args["ros_server"] if "ros_server" in server_args.keys() else None
-        #     self.redis_server = server_args["redis_server"] if "redis_server" in server_args.keys() else None
-        #     self.ak_topic = server_args["ak_topic"] if "ak_topic" in server_args.keys() else None
-        #     self.generate_guidance_code = server_args["generate_guidance_code"] if "generate_guidance_code" in server_args.keys() else False
-        #     self.use_guidance = server_args["use_guidance"] if "use_guidance" in server_args.keys() else False
-        #     self.rollouts_per_demo = server_args["rollouts_per_demo"] if "rollouts_per_demo" in server_args.keys() else 1
-        #     self.pub_interval = server_args["pub_interval"] if "pub_interval" in server_args.keys() else 0
-        #     self.reuse_code = server_args["reuse_code"] if "reuse_code" in server_args.keys() else False
-        #     self.guidance_factor = server_args["guidance_factor"] if "guidance_factor" in server_args.keys() else 0
-        #     self.skip_existing = server_args["skip_existing"] if "skip_existing" in server_args.keys() else False
-        #     self.guidance_iter = server_args["guidance_iter"] if "guidance_iter" in server_args.keys() else 1
-        # else:
-        #     self.ros_server = None
-        #     self.redis_server = None
-        #     self.ak_topic = None
-        #     self.generate_guidance_code = False
-        #     self.use_guidance = False
-        #     self.pub_interval = 0
-        #     self.rollouts_per_demo = 1
-        #     self.reuse_code = False
-        #     self.guidance_factor = 0
-        #     self.skip_existing = False
-        #     self.guidance_iter = 1
         
-
-        # cfg = load_config_motor_cortex(config_name='config')
-        
-        # self.log_dir_format = cfg.default["log_dir_format"]
-        # self.obs_count = 0
-        # self.obs_id = 0
-        # self.demo_id = 0
-
         # if self.ros_server:
         #     self.ros_setup()
 
@@ -435,11 +397,11 @@ class RLBenchEnv:
                 state_dict["pc"] += [pc]
 
         error = self.guidance_wrapper.wait_redis_ak(timeout=300)
-        if error:
-            return None, None
-                
         # fetch action
         action = np.concatenate([obs.gripper_pose, [obs.gripper_open]])
+        if error:
+            print(colored("Error in guidance", "red"))
+                
         return state_dict, torch.from_numpy(action).float()
 
     def get_rgb_pcd_gripper_from_obs(self, obs):
@@ -601,13 +563,12 @@ class RLBenchEnv:
         for demo_id in range(num_demos):
             
             if verbose:
-                print()
                 print(f"Starting demo {demo_id}")
 
             try:
                 demo = self.get_demo(task_str, variation, episode_index=demo_id)[0]
                 num_valid_demos += 1
-            except Exception as e:
+            except Exception:
                 print(colored(f"Couldnt load demo {demo_id} for {task_str} variation {variation}","red"))
                 # print(e)
                 # print()
@@ -639,7 +600,22 @@ class RLBenchEnv:
                 actioner._instr_text = descriptions[actioner._instr_idx]
 
                 self.guidance_wrapper.set_task_description(actioner._instr_text)
-                print(actioner._instr_text)
+                print(colored(actioner._instr_text,"blue"))
+                
+                # # task._task.set_initial_objects_in_scene()
+                # print(task._task._initial_objs_in_scene)
+                # for obj, objtype in task._task._initial_objs_in_scene:
+                #     print(obj, objtype, str(type(obj)))
+                #     if "Shape" in str(type(obj)):
+                #         print(colored(obj.get_handle(),"yellow"))
+                #         print(colored(f"{obj.get_name()}","red"))
+                #         print(colored(f"{obj.get_position()}","red"))
+                #         print(colored(f"{obj.get_orientation()}","red"))
+                #         print(colored(f"color {obj.get_color()}","red"))
+
+                #         # print(obj.get_object_name(obj.get_handle()))
+                #         # print(dir(obj))
+
 
                 if new_rollout:
                     self.guidance_wrapper.trigger_code_generation()
@@ -655,8 +631,11 @@ class RLBenchEnv:
 
                     #update guidance func if required
                     if step_id == 0 and new_rollout:
-                        self.guidance_wrapper.add_guidance_to_policy(actioner._policy)
-                        
+                        error = self.guidance_wrapper.add_guidance_to_policy(actioner._policy)
+                        if error:
+                            print(colored("Guidance function not added to policy","red"))
+                            self.guidance_wrapper.publish_guidance_info(error = f"Guidance function not added to policy. error: {str(error)}")
+                            break
 
                     rgb = rgb.to(device)
                     pcd = pcd.to(device)
@@ -770,25 +749,6 @@ class RLBenchEnv:
         
         return success_rate, valid, num_valid_demos
     
-
-        
-    def log_observation(self, obs, rollout_path, step):
-        print("rollout_path: ", rollout_path)
-        os.makedirs(rollout_path, exist_ok=True)
-
-        for cam in self.apply_cameras:
-            if self.apply_rgb:
-                rgb = getattr(obs, "{}_rgb".format(cam))
-                #convert rgb
-                rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-                cv2.imwrite(os.path.join(rollout_path, f"{cam}_rgb_{step}.png"), rgb)
-            if self.apply_depth:
-                depth = getattr(obs, "{}_depth".format(cam))
-                cv2.imwrite(os.path.join(rollout_path, f"{cam}_depth_{step}.png"), depth)
-            if self.apply_pc:
-                pc = getattr(obs, "{}_point_cloud".format(cam))
-                np.save(os.path.join(rollout_path, f"{cam}_pc_{step}.npy"), pc)
-        return
 
     def _collision_checking(self, task_str, step_id):
         """Collision checking for planner."""
@@ -904,7 +864,7 @@ class RLBenchEnv:
             rgb=apply_rgb,
             point_cloud=apply_pc,
             depth=apply_depth,
-            mask=False,
+            mask=False, # mask=True,
             image_size=image_size,
             render_mode=RenderMode.OPENGL,
             **kwargs,

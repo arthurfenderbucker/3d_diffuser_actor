@@ -5,7 +5,7 @@ from setuptools import setup
 
 core_requirements = [
     "einops",
-    "torch",
+    "torch<=2.3",
     "numpy",
     "torchvision",
     "diffusers",
