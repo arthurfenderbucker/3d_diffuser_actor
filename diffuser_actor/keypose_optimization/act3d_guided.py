@@ -2,15 +2,9 @@ from diffuser_actor.keypose_optimization.act3d import Act3D
 from motor_cortex.layers.guidance import GuidanceLayer
 import torch
 import einops
-import torch.nn.functional as F
-import numpy as np
 import scipy
 
-from diffuser_actor.utils.utils import (
-    normalise_quat,
-    compute_rotation_matrix_from_ortho6d
-)
-from typing import List, Tuple, Optional
+from typing import List
 
 
 class Act3DGuided(Act3D):
@@ -40,8 +34,6 @@ class Act3DGuided(Act3D):
 
     def set_guidance_func_file(self, guidance_func_file):
         
-        print("!!!!!!!!!!!!!!!!Setting guidance_func_file: ", guidance_func_file)
-        
         del self.guidance_layer
         self.guidance_func_file = guidance_func_file
         self.guidance_layer = GuidanceLayer(
@@ -52,9 +44,8 @@ class Act3DGuided(Act3D):
         )
         # check if the guidance_func was loaded
         if self.guidance_layer.guidance_func is None:
-            print("!!!!!!!!!!!!!!!!!!!!!!Error: guidance_func is None")
-            return True
-        return False
+            return False
+        return True
 
 
     
@@ -235,11 +226,14 @@ class Act3DGuided(Act3D):
         # position = position_pyramid[-1].squeeze(1)
 
         # ---------------------- guidance: set previous_vars_dict ----------------------
-        r = scipy.spatial.transform.Rotation.from_quat(rotation.cpu().detach().numpy())
-        rotation_euler = r.as_euler('zyx', degrees=True)
-        output_state = position.cpu().detach().numpy().tolist()[0] + rotation_euler.tolist()[0] + gripper.cpu().detach().numpy().tolist()[0]
-        out = self.guidance_layer.querie_guidance_func(output_state, update_vars_dict=True)
-        print(out)
+        if self.guidance_layer.guidance_func is not None:
+            r = scipy.spatial.transform.Rotation.from_quat(rotation.cpu().detach().numpy())
+            rotation_euler = r.as_euler('zyx', degrees=True)
+            output_state = position.cpu().detach().numpy().tolist()[0] + rotation_euler.tolist()[0] + gripper.cpu().detach().numpy().tolist()[0]
+            out = self.guidance_layer.querie_guidance_func(output_state, update_vars_dict=True)
+            print(out)
+        else:
+            print("guidance_func is None")
 
         # print(position)
         return {

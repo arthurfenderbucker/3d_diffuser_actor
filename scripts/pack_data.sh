@@ -3,9 +3,9 @@
 # SPLIT=train
 SPLIT=real
 
-DEMO_ROOT=/scratch/abucker/datasets/peract/raw/${SPLIT}
-RAW_SAVE_PATH=/scratch/abucker/datasets/peract/raw_highres/${SPLIT}
-PACKAGE_SAVE_PATH=/scratch/abucker/datasets/peract/Peract_packaged/${SPLIT}
+DEMO_ROOT=/data/datasets/peract/raw/${SPLIT}
+RAW_SAVE_PATH=/data/datasets/peract/raw_highres/${SPLIT}
+PACKAGE_SAVE_PATH=/data/datasets/peract/Peract_packaged/${SPLIT}
 
 export PYTHONPATH=$(pwd):$PYTHONPATH
 

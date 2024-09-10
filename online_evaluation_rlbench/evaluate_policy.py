@@ -20,7 +20,6 @@ import tap
 from diffuser_actor.keypose_optimization.act3d_guided import Act3DGuided
 from diffuser_actor.keypose_optimization.act3d import Act3D
 from diffuser_actor.trajectory_optimization.diffuser_actor import DiffuserActor
-from diffuser_actor.trajectory_optimization.diffuser_actor_guided import DiffuserActorGuided
 
 from utils.common_utils import (
     load_instructions,
@@ -245,17 +244,7 @@ def main():
         headless=bool(args.headless),
         apply_cameras=args.cameras,
         collision_checking=bool(args.collision_checking),
-        # server_args = {"ros_server": args.ros,
-        #                "redis_server": r,
-        #                "ak_topic": args.ak_topic,
-        #                "generate_guidance_code":args.generate_guidance_code,
-        #                "use_guidance": args.use_guidance,
-        #                "pub_interval": args.pub_interval,
-        #                "rollouts_per_demo": args.rollouts_per_demo,
-        #                "guidance_factor": args.guidance_factor,
-        #                "reuse_code": args.reuse_code,
-        #                "guidance_iter": args.guidance_iter,
-        #                "skip_existing": args.skip_existing} if args.redis else None,
+        
     )
 
 
