@@ -1,6 +1,8 @@
 #!/usr/bin/bash
 
-SPLIT=train
+# SPLIT=train
+SPLIT=real
+
 DEMO_ROOT=./data/peract/raw/${SPLIT}
 RAW_SAVE_PATH=./data/peract/raw_highres/${SPLIT}
 PACKAGE_SAVE_PATH=./data/peract/packaged_highres/${SPLIT}

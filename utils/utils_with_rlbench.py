@@ -24,6 +24,26 @@ from rlbench.demo import Demo
 from pyrep.errors import IKError, ConfigurationPathError
 from pyrep.const import RenderMode
 
+from termcolor import colored
+import time
+from datetime import datetime
+import cv2
+from threading import Event
+
+
+try:
+    import rospy
+    import rospkg
+    from sensor_msgs.msg import Image
+    from std_msgs.msg import String
+    from cv_bridge import CvBridge
+
+except ImportError:
+    pass
+
+
+from motor_cortex.common.guidance_wrapper import GuidanceWrapper, GuidanceArguments
+
 
 ALL_RLBENCH_TASKS = [
     'basketball_in_hoop', 'beat_the_buzz', 'change_channel', 'change_clock', 'close_box',
@@ -72,6 +92,7 @@ class Mover:
         self._step_id = 0
         self._max_tries = max_tries
         self._disabled = disabled
+        self._raycast = False
 
     def __call__(self, action, collision_checking=False):
         if self._disabled:
@@ -139,6 +160,7 @@ class Actioner:
         action_dim=7,
         predict_trajectory=True
     ):
+
         self._policy = policy
         self._instructions = instructions
         self._apply_cameras = apply_cameras
@@ -148,13 +170,17 @@ class Actioner:
         self._actions = {}
         self._instr = None
         self._task_str = None
+        self._instr_text = None
 
         self._policy.eval()
 
     def load_episode(self, task_str, variation):
         self._task_str = task_str
         instructions = list(self._instructions[task_str][variation])
-        self._instr = random.choice(instructions).unsqueeze(0)
+        # print("\n INSTRUCTIONS",self._instructions.keys())
+        
+        self._instr_idx = random.choice(range(len(instructions)))
+        self._instr = instructions[self._instr_idx].unsqueeze(0)
         self._task_id = torch.tensor(TASK_TO_ID[task_str]).unsqueeze(0)
         self._actions = {}
 
@@ -205,6 +231,7 @@ class Actioner:
 
         rgbs = rgbs / 2 + 0.5  # in [0, 1]
 
+        # print(self._instr.shape)
         if self._instr is None:
             raise ValueError()
 
@@ -274,15 +301,19 @@ class RLBenchEnv:
         self,
         data_path,
         image_size=(128, 128),
+        image_stream_size=(128, 128),
         apply_rgb=False,
         apply_depth=False,
         apply_pc=False,
         headless=False,
         apply_cameras=("left_shoulder", "right_shoulder", "wrist", "front"),
         fine_sampling_ball_diameter=None,
-        collision_checking=False
+        collision_checking=False,
     ):
 
+
+
+        
         # setup required inputs
         self.data_path = data_path
         self.apply_rgb = apply_rgb
@@ -292,42 +323,121 @@ class RLBenchEnv:
         self.fine_sampling_ball_diameter = fine_sampling_ball_diameter
 
         # setup RLBench environments
+        obs_image_size = (max(image_size[0],image_stream_size[0]), max(image_size[1],image_stream_size[1]))
         self.obs_config = self.create_obs_config(
-            image_size, apply_rgb, apply_depth, apply_pc, apply_cameras
+            obs_image_size, apply_rgb, apply_depth, apply_pc, apply_cameras
         )
 
         self.action_mode = MoveArmThenGripper(
             arm_action_mode=EndEffectorPoseViaPlanning(collision_checking=collision_checking),
             gripper_action_mode=Discrete()
         )
+
+
+
+        # print(server_args)
+        # if server_args is not None:
+        #     self.ros_server = server_args["ros_server"] if "ros_server" in server_args.keys() else None
+        #     self.redis_server = server_args["redis_server"] if "redis_server" in server_args.keys() else None
+        #     self.ak_topic = server_args["ak_topic"] if "ak_topic" in server_args.keys() else None
+        #     self.generate_guidance_code = server_args["generate_guidance_code"] if "generate_guidance_code" in server_args.keys() else False
+        #     self.use_guidance = server_args["use_guidance"] if "use_guidance" in server_args.keys() else False
+        #     self.rollouts_per_demo = server_args["rollouts_per_demo"] if "rollouts_per_demo" in server_args.keys() else 1
+        #     self.pub_interval = server_args["pub_interval"] if "pub_interval" in server_args.keys() else 0
+        #     self.reuse_code = server_args["reuse_code"] if "reuse_code" in server_args.keys() else False
+        #     self.guidance_factor = server_args["guidance_factor"] if "guidance_factor" in server_args.keys() else 0
+        #     self.skip_existing = server_args["skip_existing"] if "skip_existing" in server_args.keys() else False
+        #     self.guidance_iter = server_args["guidance_iter"] if "guidance_iter" in server_args.keys() else 1
+        # else:
+        #     self.ros_server = None
+        #     self.redis_server = None
+        #     self.ak_topic = None
+        #     self.generate_guidance_code = False
+        #     self.use_guidance = False
+        #     self.pub_interval = 0
+        #     self.rollouts_per_demo = 1
+        #     self.reuse_code = False
+        #     self.guidance_factor = 0
+        #     self.skip_existing = False
+        #     self.guidance_iter = 1
+        
+
+        # cfg = load_config_motor_cortex(config_name='config')
+        
+        # self.log_dir_format = cfg.default["log_dir_format"]
+        # self.obs_count = 0
+        # self.obs_id = 0
+        # self.demo_id = 0
+
+        # if self.ros_server:
+        #     self.ros_setup()
+
+
+        # ======== SETUP GUIDANCE =========
+        
+        guidance_args = GuidanceArguments().parse_args(known_only=True)
+
+        # print(guidance_args)
+        self.guidance_wrapper = GuidanceWrapper(guidance_args)
+        self.rollouts_per_demo = self.guidance_wrapper.rollouts_per_demo
+
+        if self.guidance_wrapper.pub_interval > 0:
+            self.action_mode.arm_action_mode.set_callable_each_step(
+                self.guidance_wrapper.get_obs_relay_func(self.get_obs_action))
+        # ================================
+
         self.env = Environment(
             self.action_mode, str(data_path), self.obs_config,
             headless=headless
         )
-        self.image_size = image_size
+        self.image_size = image_size # image size that is rendered and transmitted
+        self.obs_image_size = obs_image_size # models input size
+    
+    def resize_image(self, image):
+        """
+        Resize the image to the adequate model input size."""
 
-    def get_obs_action(self, obs):
+        if self.obs_image_size != self.image_size:
+            image = cv2.resize(image, self.image_size, interpolation=cv2.INTER_LINEAR)
+        return image
+
+    def get_obs_action(self, obs, extra_meta = {}):
         """
         Fetch the desired state and action based on the provided demo.
             :param obs: incoming obs
             :return: required observation and action list
         """
 
+        meta = self.guidance_wrapper.get_obs_meta(obs)
+        meta["robot_state"] = list(obs.gripper_pose)
+        meta.update(extra_meta)
+
         # fetch state
         state_dict = {"rgb": [], "depth": [], "pc": []}
+        
         for cam in self.apply_cameras:
             if self.apply_rgb:
                 rgb = getattr(obs, "{}_rgb".format(cam))
+                self.guidance_wrapper.transmit(rgb,f"{cam}_rgb", meta=meta)
+                rgb = self.resize_image(rgb)
                 state_dict["rgb"] += [rgb]
 
             if self.apply_depth:
                 depth = getattr(obs, "{}_depth".format(cam))
+                self.guidance_wrapper.transmit(depth,f"{cam}_depth", meta=meta)
+                depth = self.resize_image(depth)
                 state_dict["depth"] += [depth]
 
             if self.apply_pc:
                 pc = getattr(obs, "{}_point_cloud".format(cam))
+                self.guidance_wrapper.transmit(pc,f"{cam}_point_cloud", meta=meta)
+                pc = self.resize_image(pc)
                 state_dict["pc"] += [pc]
 
+        error = self.guidance_wrapper.wait_redis_ak(timeout=300)
+        if error:
+            return None, None
+                
         # fetch action
         action = np.concatenate([obs.gripper_pose, [obs.gripper_open]])
         return state_dict, torch.from_numpy(action).float()
@@ -408,7 +518,7 @@ class RLBenchEnv:
             random_selection=False
         )
         return demos
-
+    
     def evaluate_task_on_multiple_variations(
         self,
         task_str: str,
@@ -489,6 +599,7 @@ class RLBenchEnv:
         total_reward = 0
 
         for demo_id in range(num_demos):
+            
             if verbose:
                 print()
                 print(f"Starting demo {demo_id}")
@@ -496,7 +607,11 @@ class RLBenchEnv:
             try:
                 demo = self.get_demo(task_str, variation, episode_index=demo_id)[0]
                 num_valid_demos += 1
-            except:
+            except Exception as e:
+                print(colored(f"Couldnt load demo {demo_id} for {task_str} variation {variation}","red"))
+                # print(e)
+                # print()
+                # traceback.print_exc()
                 continue
 
             rgbs = torch.Tensor([]).to(device)
@@ -504,110 +619,146 @@ class RLBenchEnv:
             grippers = torch.Tensor([]).to(device)
 
             # descriptions, obs = task.reset()
-            descriptions, obs = task.reset_to_demo(demo)
+            new_rollout = True
+            guidance_func_file = None
+            for rollout in range(self.rollouts_per_demo):
+                
+                self.guidance_wrapper.set_experiment(task_str, variation, demo_id, rollout)
+                
+                results = self.guidance_wrapper.check_rollout_status()
+                if self.guidance_wrapper.skip_existing and results is not None:
+                    print(results)
+                    success_rate += results["success_rate"]
+                    total_reward += results["max_reward"]
+                    print(colored(f"SKIPPING variation {variation} demo {demo_id} rollouts_sulfix {self.guidance_wrapper.rollouts_sulfix} rollout {rollout}","yellow"))
+                    continue
+                
 
-            actioner.load_episode(task_str, variation)
+                descriptions, obs = task.reset_to_demo(demo)
+                actioner.load_episode(task_str, variation)
+                actioner._instr_text = descriptions[actioner._instr_idx]
 
-            move = Mover(task, max_tries=max_tries)
-            reward = 0.0
-            max_reward = 0.0
+                self.guidance_wrapper.set_task_description(actioner._instr_text)
+                print(actioner._instr_text)
 
-            for step_id in range(max_steps):
+                if new_rollout:
+                    self.guidance_wrapper.trigger_code_generation()
 
-                # Fetch the current observation, and predict one action
-                rgb, pcd, gripper = self.get_rgb_pcd_gripper_from_obs(obs)
-                rgb = rgb.to(device)
-                pcd = pcd.to(device)
-                gripper = gripper.to(device)
+                move = Mover(task, max_tries=max_tries)
+                reward = 0.0
+                max_reward = 0.0
 
-                rgbs = torch.cat([rgbs, rgb.unsqueeze(1)], dim=1)
-                pcds = torch.cat([pcds, pcd.unsqueeze(1)], dim=1)
-                grippers = torch.cat([grippers, gripper.unsqueeze(1)], dim=1)
+                for step_id in range(max_steps):
+                    self.guidance_wrapper.set_step_id(step_id)
+                    # Fetch the current observation, and predict one action
+                    rgb, pcd, gripper = self.get_rgb_pcd_gripper_from_obs(obs)
 
-                # Prepare proprioception history
-                rgbs_input = rgbs[:, -1:][:, :, :, :3]
-                pcds_input = pcds[:, -1:]
-                if num_history < 1:
-                    gripper_input = grippers[:, -1]
-                else:
-                    gripper_input = grippers[:, -num_history:]
-                    npad = num_history - gripper_input.shape[1]
-                    gripper_input = F.pad(
-                        gripper_input, (0, 0, npad, 0), mode='replicate'
+                    #update guidance func if required
+                    if step_id == 0 and new_rollout:
+                        self.guidance_wrapper.add_guidance_to_policy(actioner._policy)
+                        
+
+                    rgb = rgb.to(device)
+                    pcd = pcd.to(device)
+                    gripper = gripper.to(device)
+
+                    rgbs = torch.cat([rgbs, rgb.unsqueeze(1)], dim=1)
+                    pcds = torch.cat([pcds, pcd.unsqueeze(1)], dim=1)
+                    grippers = torch.cat([grippers, gripper.unsqueeze(1)], dim=1)
+
+                    # Prepare proprioception history
+                    rgbs_input = rgbs[:, -1:][:, :, :, :3]
+                    pcds_input = pcds[:, -1:]
+                    if num_history < 1:
+                        gripper_input = grippers[:, -1]
+                    else:
+                        gripper_input = grippers[:, -num_history:]
+                        npad = num_history - gripper_input.shape[1]
+                        gripper_input = F.pad(
+                            gripper_input, (0, 0, npad, 0), mode='replicate'
+                        )
+
+                    output = actioner.predict(
+                        rgbs_input,
+                        pcds_input,
+                        gripper_input,
+                        interpolation_length=interpolation_length
                     )
 
-                output = actioner.predict(
-                    rgbs_input,
-                    pcds_input,
-                    gripper_input,
-                    interpolation_length=interpolation_length
-                )
+                    if verbose:
+                        print(f"Step {step_id}")
 
-                if verbose:
-                    print(f"Step {step_id}")
+                    terminate = True
 
-                terminate = True
+                    # Update the observation based on the predicted action
+                    try:
+                        # Execute entire predicted trajectory step by step
+                        if output.get("trajectory", None) is not None:
+                            trajectory = output["trajectory"][-1].cpu().numpy()
+                            trajectory[:, -1] = trajectory[:, -1].round()
 
-                # Update the observation based on the predicted action
-                try:
-                    # Execute entire predicted trajectory step by step
-                    if output.get("trajectory", None) is not None:
-                        trajectory = output["trajectory"][-1].cpu().numpy()
-                        trajectory[:, -1] = trajectory[:, -1].round()
+                            # execute
+                            for action in tqdm(trajectory):
+                                #try:
+                                #    collision_checking = self._collision_checking(task_str, step_id)
+                                #    obs, reward, terminate, _ = move(action_np, collision_checking=collision_checking)
+                                #except:
+                                #    terminate = True
+                                #    pass
+                                collision_checking = self._collision_checking(task_str, step_id)
+                                obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
 
-                        # execute
-                        for action in tqdm(trajectory):
-                            #try:
-                            #    collision_checking = self._collision_checking(task_str, step_id)
-                            #    obs, reward, terminate, _ = move(action_np, collision_checking=collision_checking)
-                            #except:
-                            #    terminate = True
-                            #    pass
+                        # Or plan to reach next predicted keypoint
+                        else:
+                            # print("Plan with RRT")
+                            action = output["action"]
+                            action[..., -1] = torch.round(action[..., -1])
+                            action = action[-1].detach().cpu().numpy()
+                            # print(action)
                             collision_checking = self._collision_checking(task_str, step_id)
                             obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
 
-                    # Or plan to reach next predicted keypoint
-                    else:
-                        print("Plan with RRT")
-                        action = output["action"]
-                        action[..., -1] = torch.round(action[..., -1])
-                        action = action[-1].detach().cpu().numpy()
+                        max_reward = max(max_reward, reward)
+                        
+                        # -------- LOGGING guidance --------
+                        self.guidance_wrapper.publish_guidance_info(actioner._policy)
+                        # ----------------------------------
 
-                        collision_checking = self._collision_checking(task_str, step_id)
-                        obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
+                        if reward == 1:
+                            success_rate += 1
+                            break
 
-                    max_reward = max(max_reward, reward)
+                        if terminate:
+                            print("The episode has terminated!")
 
-                    if reward == 1:
-                        success_rate += 1
-                        break
+                    except (IKError, ConfigurationPathError, InvalidActionError) as e:
+                        print(task_str, demo, step_id, success_rate, e)
+                        reward = 0
+                        #break
 
-                    if terminate:
-                        print("The episode has terminated!")
+                total_reward += max_reward
+                if reward == 0:
+                    step_id += 1
 
-                except (IKError, ConfigurationPathError, InvalidActionError) as e:
-                    print(task_str, demo, step_id, success_rate, e)
-                    reward = 0
-                    #break
+                print(
+                    task_str,
+                    "Variation",
+                    variation,
+                    "Demo",
+                    demo_id,
+                    "Reward",
+                    f"{reward:.2f}",
+                    "max_reward",
+                    f"{max_reward:.2f}",
+                    f"SR: {success_rate}/{demo_id+1}", 
+                    f"SR: {total_reward:.2f}/{demo_id+1}",
+                    "# valid demos", num_valid_demos,
+                )
+                
+                new_rollout = False
+                self.guidance_wrapper.log_success_rate(success_rate, max_reward, num_valid_demos)
 
-            total_reward += max_reward
-            if reward == 0:
-                step_id += 1
-
-            print(
-                task_str,
-                "Variation",
-                variation,
-                "Demo",
-                demo_id,
-                "Reward",
-                f"{reward:.2f}",
-                "max_reward",
-                f"{max_reward:.2f}",
-                f"SR: {success_rate}/{demo_id+1}",
-                f"SR: {total_reward:.2f}/{demo_id+1}",
-                "# valid demos", num_valid_demos,
-            )
+            print("Rollouts completed")
 
         # Compensate for failed demos
         if num_valid_demos == 0:
@@ -616,7 +767,28 @@ class RLBenchEnv:
         else:
             valid = True
 
+        
         return success_rate, valid, num_valid_demos
+    
+
+        
+    def log_observation(self, obs, rollout_path, step):
+        print("rollout_path: ", rollout_path)
+        os.makedirs(rollout_path, exist_ok=True)
+
+        for cam in self.apply_cameras:
+            if self.apply_rgb:
+                rgb = getattr(obs, "{}_rgb".format(cam))
+                #convert rgb
+                rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(os.path.join(rollout_path, f"{cam}_rgb_{step}.png"), rgb)
+            if self.apply_depth:
+                depth = getattr(obs, "{}_depth".format(cam))
+                cv2.imwrite(os.path.join(rollout_path, f"{cam}_depth_{step}.png"), depth)
+            if self.apply_pc:
+                pc = getattr(obs, "{}_point_cloud".format(cam))
+                np.save(os.path.join(rollout_path, f"{cam}_pc_{step}.npy"), pc)
+        return
 
     def _collision_checking(self, task_str, step_id):
         """Collision checking for planner."""
@@ -713,6 +885,7 @@ class RLBenchEnv:
         self.env.shutdown()
         return success_rate, valid, invalid_demos
 
+
     def create_obs_config(
         self, image_size, apply_rgb, apply_depth, apply_pc, apply_cameras, **kwargs
     ):
@@ -760,7 +933,6 @@ class RLBenchEnv:
         )
 
         return obs_config
-
 
 # Identify way-point in each RLBench Demo
 def _is_stopped(demo, i, obs, stopped_buffer, delta):
@@ -840,4 +1012,6 @@ def transform(obs_dict, scale_size=(0.75, 1.25), augmentation=False):
         if pc is not None:
             obs_pc += [pc.float()]
     obs = obs_rgb + obs_depth + obs_pc
+
+    # print([o.shape for o in obs])
     return torch.cat(obs, dim=0)

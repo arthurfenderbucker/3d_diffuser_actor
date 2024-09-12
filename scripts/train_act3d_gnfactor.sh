@@ -8,7 +8,7 @@ num_ghost_points=1000
 num_ghost_points_val=10000
 B=12
 C=120
-ngpus=4
+ngpus=1
 max_episodes_per_task=20
 
 CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node $ngpus --master_port $RANDOM \

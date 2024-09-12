@@ -1,0 +1,3 @@
+[submodule "RLBench"]
+	path = RLBench
+	url = https://github.com/MohitShridhar/RLBench.git
