@@ -2,16 +2,12 @@ from diffuser_actor.trajectory_optimization.diffuser_actor import DiffuserActor
 
 from motor_cortex.layers.guidance import GuidanceLayer
 import torch
-import einops
 import torch.nn.functional as F
-import numpy as np
-import scipy
 
 from diffuser_actor.utils.utils import (
-    normalise_quat,
-    compute_rotation_matrix_from_ortho6d
+    normalise_quat
 )
-from typing import List, Tuple, Optional
+from typing import List
 
 
 
@@ -35,7 +31,6 @@ class DiffuserActorGuided(DiffuserActor):
         )
     
     def set_guidance_func_file(self, guidance_func_file):
-        print("!!!!!!!!!!!!!!!!Setting guidance_func_file: ", guidance_func_file)
         
         del self.guidance_layer
         self.guidance_func_file = guidance_func_file
@@ -47,9 +42,8 @@ class DiffuserActorGuided(DiffuserActor):
         )
         # check if the guidance_func was loaded
         if self.guidance_layer.guidance_func is None:
-            print("!!!!!!!!!!!!!!!!!!!!!!Error: guidance_func is None")
-            return True
-        return False
+            return False
+        return True
     
 
     def compute_trajectories(self, *args, **kwargs):

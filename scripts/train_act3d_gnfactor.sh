@@ -8,8 +8,8 @@ num_ghost_points=1000
 num_ghost_points_val=10000
 B=12
 C=120
-ngpus=1
-max_episodes_per_task=20
+ngpus=2
+max_episodes_per_task=25
 
 CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node $ngpus --master_port $RANDOM \
     main_keypose.py \
@@ -42,5 +42,5 @@ CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node $ngpus --master_port $RANDOM \
     --position_loss_coeff 1 \
     --cameras front\
     --max_episodes_per_task $max_episodes_per_task \
-    --run_log_dir act3d_multitask-C$C-B$B-lr$lr
+    --run_log_dir act3d_multitask-C$C-B$B-lr$lr-eps$max_episodes_per_task
 

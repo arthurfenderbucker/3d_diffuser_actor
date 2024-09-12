@@ -234,7 +234,7 @@ class Act3D(nn.Module):
         ghost_pcd_masks_pyramid = []
 
         for i in range(self.num_sampling_level):
-            print("debug: i", i, "total_timesteps", self.num_sampling_level)
+            # print("debug: i", i, "total_timesteps", self.num_sampling_level)
             # Sample ghost points
             if i == 0:
                 anchor = None
@@ -339,14 +339,14 @@ class Act3D(nn.Module):
         ghost_pcd_masks = ghost_pcd_masks_i
         ghost_pcd_features = ghost_pcd_features_i
 
-        print("debug: ghost_pcd")
+        # print("debug: ghost_pcd")
         # Predict the next gripper action (position, rotation, gripper opening)
         position, rotation, gripper = self._predict_action(
             ghost_pcd_masks[-1], ghost_pcd, ghost_pcd_features, query_features, total_timesteps,
             fine_ghost_pcd_offsets if self.regress_position_offset else None
         )
         # position = position_pyramid[-1].squeeze(1)
-        print("debug: position", position)
+        # print("debug: position", position)
         return {
             # Action
             "position": position,
