@@ -1,4 +1,3 @@
-import os.path
 
 from setuptools import setup
 
@@ -10,7 +9,7 @@ core_requirements = [
     "torchvision",
     "diffusers",
     "dgl",
-    "flash_attn<=2.5.3"",
+    "flash_attn<=2.5.3",
 ]
 
 setup(name='diffuser_actor',
@@ -24,3 +23,4 @@ setup(name='diffuser_actor',
             'diffuser_actor',
       ],
 )
+   
