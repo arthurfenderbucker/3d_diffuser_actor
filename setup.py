@@ -5,12 +5,12 @@ from setuptools import setup
 
 core_requirements = [
     "einops",
-    "torch",
+    "torch<2.3",
     "numpy",
     "torchvision",
     "diffusers",
     "dgl",
-    "flash_attn",
+    "flash_attn<=2.5.3"",
 ]
 
 setup(name='diffuser_actor',
