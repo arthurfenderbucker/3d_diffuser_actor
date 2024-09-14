@@ -656,7 +656,16 @@ class RLBenchEnv:
             
             if self.guidance_wrapper.skip_existing and results is not None:
                 print(results)
-                if best_iter == self.guidance_wrapper.guidance_iter:
+                if isinstance(results, dict):
+                    print("checking for: ", f"{self.guidance_wrapper.guidance_factor}_{self.guidance_wrapper.guidance_iter}" )
+                    it_res = results.get(f"{self.guidance_wrapper.guidance_factor}_{self.guidance_wrapper.guidance_iter}", None)
+                    if it_res is not None and "max_reward" in it_res.keys() and "success_rate" in it_res.keys():
+                        print(colored(f"SKIPPING ITER variation {variation} demo {demo_id} rollouts_sulfix {self.guidance_wrapper.rollouts_sulfix} rollout {rollout}","yellow"))
+                        success_rate += it_res["success_rate"]
+                        total_reward += it_res["max_reward"]
+                        continue
+
+                if best_iter == self.guidance_wrapper.guidance_iter or self.guidance_wrapper.guidance_iter == 1:
                     success_rate += results["success_rate"]
                     total_reward += results["max_reward"]
                     print(colored(f"SKIPPING variation {variation} demo {demo_id} rollouts_sulfix {self.guidance_wrapper.rollouts_sulfix} rollout {rollout}","yellow"))
