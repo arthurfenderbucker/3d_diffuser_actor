@@ -20,7 +20,6 @@ import tap
 from diffuser_actor.keypose_optimization.act3d_guided import Act3DGuided
 from diffuser_actor.keypose_optimization.act3d import Act3D
 from diffuser_actor.trajectory_optimization.diffuser_actor import DiffuserActor
-from diffuser_actor.trajectory_optimization.diffuser_actor_guided import DiffuserActorGuided
 
 from utils.common_utils import (
     load_instructions,
@@ -87,6 +86,7 @@ class Arguments(tap.Tap):
     # ros: int = 0
     # ak_topic: str = 'perception_ak'
     use_guidance: int = 0
+    load_weights: int = 1
     # guidance_factor: float = 0.5
     # generate_guidance_code: int = 0
     # raw_policy: int = 0 #prevents loading checkpoint
@@ -104,7 +104,7 @@ class Arguments(tap.Tap):
     # # guidance parameters
     # ros: int = 0
     # ak_topic: str = 'perception_ak'
-    use_guidance: int = 0
+    # use_guidance: int = 0
     # guidance_factor: float = 0.5
     # generate_guidance_code: int = 0
     # raw_policy: int = 0 #prevents loading checkpoint
@@ -135,7 +135,8 @@ def load_models(args):
         args.gripper_loc_bounds_file,
         task=task, buffer=args.gripper_loc_bounds_buffer,
     )
-
+    # print(" ===========gripper_loc_bounds ", gripper_loc_bounds)
+    gripper_loc_bounds[0,2] = 0.07
     if args.test_model == "3d_diffuser_actor":
         model = DiffuserActor(
             backbone=args.backbone,
@@ -208,12 +209,15 @@ def load_models(args):
         raise NotImplementedError
 
     # Load model weights
-    model_dict = torch.load(args.checkpoint, map_location="cpu")
-    model_dict_weight = {}
-    for key in model_dict["weight"]:
-        _key = key[7:]
-        model_dict_weight[_key] = model_dict["weight"][key]
-    model.load_state_dict(model_dict_weight)
+    if args.load_weights:
+        model_dict = torch.load(args.checkpoint, map_location="cpu")
+        model_dict_weight = {}
+        for key in model_dict["weight"]:
+            _key = key[7:]
+            model_dict_weight[_key] = model_dict["weight"][key]
+        model.load_state_dict(model_dict_weight)
+    else:
+        print("!!!!!!!!!!!!! Not loading weights !!!!!!!!!!!!!")
     model.eval()
 
     return model
@@ -245,17 +249,7 @@ def main():
         headless=bool(args.headless),
         apply_cameras=args.cameras,
         collision_checking=bool(args.collision_checking),
-        # server_args = {"ros_server": args.ros,
-        #                "redis_server": r,
-        #                "ak_topic": args.ak_topic,
-        #                "generate_guidance_code":args.generate_guidance_code,
-        #                "use_guidance": args.use_guidance,
-        #                "pub_interval": args.pub_interval,
-        #                "rollouts_per_demo": args.rollouts_per_demo,
-        #                "guidance_factor": args.guidance_factor,
-        #                "reuse_code": args.reuse_code,
-        #                "guidance_iter": args.guidance_iter,
-        #                "skip_existing": args.skip_existing} if args.redis else None,
+        
     )
 
 

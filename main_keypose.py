@@ -259,7 +259,7 @@ class TrainTester(BaseTrainTester):
                 self.writer.add_scalar(key, val, step_id)
 
             # Also log to terminal
-            print(f"Step {step_id}:")
+            # print(f"Step {step_id}:")
             for key, value in values.items():
                 print(f"{key}: {value:.03f}")
 

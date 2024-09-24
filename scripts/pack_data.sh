@@ -1,11 +1,11 @@
 #!/usr/bin/bash
 
 # SPLIT=train
-SPLIT=real
+SPLIT=val_real
 
-DEMO_ROOT=/scratch/abucker/datasets/peract/raw/${SPLIT}
-RAW_SAVE_PATH=/scratch/abucker/datasets/peract/raw_highres/${SPLIT}
-PACKAGE_SAVE_PATH=/scratch/abucker/datasets/peract/Peract_packaged/${SPLIT}
+DEMO_ROOT=/data/datasets/peract/raw/${SPLIT}
+RAW_SAVE_PATH=/data/datasets/peract/raw_highres/${SPLIT}
+PACKAGE_SAVE_PATH=/data/datasets/peract/Peract_packaged/${SPLIT}
 
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
@@ -28,9 +28,9 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 
 # Package episodes into .dat fiels
 # for task in place_cups close_jar insert_onto_square_peg light_bulb_in meat_off_grill open_drawer place_shape_in_shape_sorter place_wine_at_rack_location push_buttons put_groceries_in_cupboard put_item_in_drawer put_money_in_safe reach_and_drag slide_block_to_color_target stack_blocks stack_cups sweep_to_dustpan_of_size turn_tap
-for task in push_buttons #place_cups close_jar insert_onto_square_peg light_bulb_in meat_off_grill open_drawer place_shape_in_shape_sorter place_wine_at_rack_location push_buttons put_groceries_in_cupboard put_item_in_drawer put_money_in_safe reach_and_drag slide_block_to_color_target stack_blocks stack_cups sweep_to_dustpan_of_size turn_tap
+for task in mouse_dragging #push_buttons #place_cups close_jar insert_onto_square_peg light_bulb_in meat_off_grill open_drawer place_shape_in_shape_sorter place_wine_at_rack_location push_buttons put_groceries_in_cupboard put_item_in_drawer put_money_in_safe reach_and_drag slide_block_to_color_target stack_blocks stack_cups sweep_to_dustpan_of_size turn_tap
 do
-    python data_preprocessing/package_rlbench.py \
+    python data_preprocessing/package_rlbench_real.py \
         --data_dir=$DEMO_ROOT \
         --tasks=$task \
         --output=$PACKAGE_SAVE_PATH \

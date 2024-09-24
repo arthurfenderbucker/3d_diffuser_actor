@@ -72,8 +72,11 @@ class RLBenchDataset(Dataset):
 
         # File-names of episodes per task and variation
         episodes_by_task = defaultdict(list)  # {task: [(task, var, filepath)]}
+        # print(episodes_by_task)
+        # print(taskvar)
         for root, (task, var) in itertools.product(self._root, taskvar):
             data_dir = root / f"{task}+{var}"
+            # print("data_dir",data_dir)
             if not data_dir.is_dir():
                 print(f"Can't find dataset folder {data_dir}")
                 continue
@@ -81,6 +84,7 @@ class RLBenchDataset(Dataset):
             dat_episodes = [(task, var, ep) for ep in data_dir.glob("*.dat")]
             pkl_episodes = [(task, var, ep) for ep in data_dir.glob("*.pkl")]
             episodes = npy_episodes + dat_episodes + pkl_episodes
+            print(episodes)
             # Split episodes equally into task variations
             if max_episodes_per_task > -1:
                 episodes = episodes[
