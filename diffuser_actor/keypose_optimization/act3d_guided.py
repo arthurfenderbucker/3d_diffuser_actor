@@ -5,7 +5,10 @@ import einops
 import scipy
 
 from typing import List
-
+from diffuser_actor.utils.utils import (
+    normalise_quat,
+    compute_rotation_matrix_from_ortho6d
+)
 
 class Act3DGuided(Act3D):
     def __init__(self, *args, **kwargs):
@@ -48,7 +51,51 @@ class Act3DGuided(Act3D):
         return True
 
 
-    
+    def _predict_action(self,
+                        ghost_pcd_mask, ghost_pcd, ghost_pcd_features, query_features, total_timesteps,
+                        fine_ghost_pcd_offsets=None):
+        """Compute the predicted action (position, rotation, opening) from the predicted mask."""
+        # Select top-scoring ghost point
+        top_idx = torch.max(ghost_pcd_mask, dim=-1).indices
+        position = ghost_pcd[torch.arange(total_timesteps), :, top_idx]
+
+        # Add an offset regressed from the ghost point's position to the predicted position
+        if fine_ghost_pcd_offsets is not None:
+            position = position + fine_ghost_pcd_offsets[torch.arange(total_timesteps), :, top_idx]
+
+        # Predict rotation and gripper opening
+        if self.rotation_parametrization in ["quat_from_top_ghost", "6D_from_top_ghost"]:
+            ghost_pcd_features = einops.rearrange(ghost_pcd_features, "npts bt c -> bt npts c")
+            features = ghost_pcd_features[torch.arange(total_timesteps), top_idx]
+        elif self.rotation_parametrization in ["quat_from_query", "6D_from_query"]:
+            features = query_features.squeeze(0)
+
+
+
+        # ================== Guidance Infere predictor distribuiton ==================
+        # pred, distribution = self.guidance_layer.infer_regression_model_distribution(self.gripper_state_predictor, features)
+        # ============================================================================
+
+        pred = self.gripper_state_predictor(features)
+
+        print("rot dim: ",pred[:, :self.rotation_dim].size())
+        print("gripper dim: ",pred[:, self.rotation_dim:].size())
+
+        print("rot values: ",pred[:, :self.rotation_dim])
+        print("gripper values: ",pred[:, self.rotation_dim:])
+
+        if "quat" in self.rotation_parametrization:
+            rotation = normalise_quat(pred[:, :self.rotation_dim])
+        elif "6D" in self.rotation_parametrization:
+            rotation = compute_rotation_matrix_from_ortho6d(pred[:, :self.rotation_dim])
+
+        gripper = torch.sigmoid(pred[:, self.rotation_dim:])
+
+        print("position: ", position)
+        print("rotation: ", rotation)
+        print("gripper: ", gripper)
+
+        return position, rotation, gripper
 
     def forward(self, visible_rgb, visible_pcd, instruction, curr_gripper, gt_action=None):
         """

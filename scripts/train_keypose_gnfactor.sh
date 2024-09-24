@@ -8,10 +8,10 @@ dense_interpolation=1
 interpolation_length=2
 num_history=3
 diffusion_timesteps=100
-B=8
+B=4
 C=120
-ngpus=6
-max_episodes_per_task=20
+ngpus=1
+max_episodes_per_task=5
 quaternion_format=xyzw
 
 CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node $ngpus --master_port $RANDOM \
@@ -43,4 +43,4 @@ CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node $ngpus --master_port $RANDOM \
     --cameras front\
     --max_episodes_per_task $max_episodes_per_task \
     --quaternion_format $quaternion_format \
-    --run_log_dir diffusion_multitask-C$C-B$B-lr$lr-DI$dense_interpolation-$interpolation_length-H$num_history-DT$diffusion_timesteps
+    --run_log_dir diffusion_multitask-C$C-B$B-lr$lr-DI$dense_interpolation-$interpolation_length-H$num_history-DT$diffusion_timesteps-eps$max_episodes_per_task

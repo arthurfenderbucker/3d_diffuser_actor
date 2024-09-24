@@ -54,7 +54,7 @@ embedding_dim=120
 cameras="front"
 seed=0
 # checkpoint=train_logs/act3d_gnfactor.pth
-checkpoint=train_logs/act3d_gnfactor.pth
+checkpoint=train_logs/act3d_gnfactor_5ep.pth
 
 
 num_ckpts=${#tasks[@]}
@@ -85,7 +85,7 @@ for ((i=0; i<$num_ckpts; i++)); do
     --instructions instructions/peract/instructions.pkl \
     --variations -1 \
     --max_tries $max_tries \
-    --max_steps 20 \
+    --max_steps 15 \
     --seed $seed \
     --gripper_loc_bounds_file $gripper_loc_bounds_file \
     --gripper_loc_bounds_buffer 0.08 ${filtered_args[@]};

@@ -66,7 +66,9 @@ class RotaryPositionEncoding3D(RotaryPositionEncoding):
         @param XYZ: [B,N,3]
         @return:
         '''
-        bsize, npoint, _ = XYZ.shape
+        s = XYZ.shape
+        bsize = s[0]
+        npoint = s[1]
         x_position, y_position, z_position = XYZ[..., 0:1], XYZ[..., 1:2], XYZ[..., 2:3]
         div_term = torch.exp(
             torch.arange(0, self.feature_dim // 3, 2, dtype=torch.float, device=XYZ.device)

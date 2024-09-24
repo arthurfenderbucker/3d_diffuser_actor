@@ -13,7 +13,6 @@ import transformers
 from tqdm.auto import tqdm
 import torch
 
-from utils.utils_with_rlbench import RLBenchEnv, task_file_to_task_class
 
 
 Annotations = Dict[str, Dict[int, List[str]]]
@@ -31,6 +30,7 @@ class Arguments(tap.Tap):
     annotations: Tuple[Path, ...] = ()
     zero: bool = False
     verbose: bool = False
+    split_path: str = "data/peract/raw/train_real"
 
 
 def parse_int(s):
@@ -99,12 +99,44 @@ def load_annotations(annotations: Tuple[Path, ...]) -> Annotations:
 
     return items
 
+import glob
+def load_annotation_from_path(data_path):
+    # find all instructions.pkl files
+    items: Annotations = {}
+    annotation_files = glob.glob(data_path + "/*/*/variation_descriptions.pkl", recursive=True)
+    for annotation_file in annotation_files:
+        print(annotation_file)
 
+        # parse variation from path 
+        try:
+            variation = int(annotation_file.split("/")[-2].split("variation")[-1])
+            task = annotation_file.split("/")[-3]
+        except:
+            continue
+        print(task, variation)
+
+        with open(annotation_file, 'rb') as f:
+            instructions = pickle.load(f)
+        
+        # task = item["fields"]["task"]
+        # variation = item["fields"]["variation"]
+        # instruction = item["fields"]["instruction"]
+
+        if task not in items:
+            items[task] = {}
+
+        if variation not in items[task]:
+            items[task][variation] = []
+        items[task][variation] = items[task][variation] + instructions
+    return items
 if __name__ == "__main__":
     args = Arguments().parse_args()
     print(args)
 
-    annotations = load_annotations(args.annotations)
+    # annotations = load_annotations(args.annotations)
+    annotations = load_annotation_from_path(args.split_path)
+    print(annotations)
+    # annotations = {"mouse_dragging": {0: ["drag the mouse to the "]}}
 
     tokenizer = load_tokenizer(args.encoder)
     tokenizer.model_max_length = args.model_max_length
@@ -112,40 +144,46 @@ if __name__ == "__main__":
     model = load_model(args.encoder)
     model = model.to(args.device)
 
-    env = RLBenchEnv(
-        data_path="",
-        apply_rgb=True,
-        apply_pc=True,
-        apply_cameras=("left_shoulder", "right_shoulder", "wrist"),
-        headless=True,
-    )
+    # env = RLBenchEnv(
+    #     data_path="",
+    #     apply_rgb=True,
+    #     apply_pc=True,
+    #     apply_cameras=("left_shoulder", "right_shoulder", "wrist"),
+    #     headless=True,
+    # )
+    # from motor_cortex.common.real_life_env import RealLifeTaskEnvironment
+    # env = RealLifeTaskEnvironment(description=self.args.real_life_task_description, exit_event=self.exit_event)
 
     instructions: Dict[str, Dict[int, torch.Tensor]] = {}
     tasks = set(args.tasks)
 
     for task in tqdm(tasks):
-        task_type = task_file_to_task_class(task)
-        task_inst = env.env.get_task(task_type)._task
-        task_inst.init_task()
+        # task_type = task_file_to_task_class(task)
+        # task_inst = env.env.get_task(task_type)._task
+        # task_inst.init_task()
 
         instructions[task] = {}
 
-        variations = [v for v in args.variations if v < task_inst.variation_count()]
+        variations = [v for v in args.variations]
         for variation in variations:
             # check instructions among annotations
             if task in annotations and variation in annotations[task]:
+                print(task, variation)
                 instr: Optional[List[str]] = annotations[task][variation]
-            # or, collect it from RLBench synthetic instructions
+                print(instr)
             else:
-                instr = None
-                for i in range(3):
-                    try:
-                        instr = task_inst.init_episode(variation)
-                        break
-                    except:
-                        print(f"Cannot init episode {task}")
-                if instr is None:
-                    raise RuntimeError()
+                continue
+            # # or, collect it from RLBench synthetic instructions
+            # else:
+            #     instr = None
+            #     for i in range(3):
+            #         try:
+            #             instr = task_inst.init_episode(variation)
+            #             break
+            #         except:
+            #             print(f"Cannot init episode {task}")
+            #     if instr is None:
+            #         raise RuntimeError()
 
             if args.verbose:
                 print(task, variation, instr)

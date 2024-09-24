@@ -14,6 +14,7 @@ from rlbench.demo import Demo
 
 from utils.utils_with_rlbench import (
     RLBenchEnv,
+
     keypoint_discovery,
     obs_to_attn,
     transform,
@@ -75,6 +76,7 @@ class Dataset(torch.utils.data.Dataset):
 
     def __init__(self, args: Arguments):
         # load RLBench environment
+        print(args.cameras)
         self.env = RLBenchEnv(
             data_path=args.data_dir,
             image_size=[int(x) for x in args.image_size.split(",")],

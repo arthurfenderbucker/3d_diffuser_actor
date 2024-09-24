@@ -149,13 +149,12 @@ class DiffuserActorGuided(DiffuserActor):
             # ---------------------- adequating model input for guidance ----------------------
             # generate n trajectories by repeating the first dimensions of each input variable n times
 
-            trajectory_mask = trajectory_mask.repeat(self._num_samples, 1)
-            rgb_obs = rgb_obs.repeat(self._num_samples, 1, 1, 1, 1)
-            pcd_obs = pcd_obs.repeat(self._num_samples, 1, 1, 1, 1)
-            instruction = instruction.repeat(self._num_samples, 1, 1)
-            curr_gripper = curr_gripper.repeat(self._num_samples, 1, 1)
+            trajectory_mask = trajectory_mask.repeat(self.guidance_layer.num_samples, 1)
+            rgb_obs = rgb_obs.repeat(self.guidance_layer.num_samples, 1, 1, 1, 1)
+            pcd_obs = pcd_obs.repeat(self.guidance_layer.num_samples, 1, 1, 1, 1)
+            instruction = instruction.repeat(self.guidance_layer.num_samples, 1, 1)
+            curr_gripper = curr_gripper.repeat(self.guidance_layer.num_samples, 1, 1)
             
-            # ---------------------- adequating model input for guidance ----------------------
                         
             # print input vars sizes for debugging
             print("-------------------------------------------- ")
@@ -166,6 +165,7 @@ class DiffuserActorGuided(DiffuserActor):
             print("final instruction size: ", instruction.size())
             print("final curr_gripper size: ", curr_gripper.size())
             print()
+            # ---------------------- adequating model input for guidance ----------------------
             
             trajectories = self.compute_trajectory(
                 trajectory_mask,
@@ -175,17 +175,15 @@ class DiffuserActorGuided(DiffuserActor):
                 curr_gripper
             )
 
+            # ---------------------- guidance ----------------------
             # print traj sizes for debugging
             print("Trajectories size: ", trajectories.size())
-
-
-            # ---------------------- guidance ----------------------
             guidance_output = self.guidance_layer.guide([trajectories])
             trajectoriy = guidance_output[0]
             # ---------------------- end of guidance ----------------------
-            
-
+        
             return trajectoriy
+        
         # Normalize all pos
         gt_trajectory = gt_trajectory.clone()
         pcd_obs = pcd_obs.clone()
@@ -260,15 +258,39 @@ class DiffuserActorGuided(DiffuserActor):
         """
         function used by the guidance layer convert model output to robot state
         """
+        n = self.guidance_layer.num_samples 
+        print("n: ", n)
+        # guide only for the last position of the trajectory
+        trajectories = model_output[0]
+        print("Trajectories size: ", trajectories.size())
 
+        # reshape the trajectories to get the last state of each trajectory
+        end_states =  trajectories[:, -1, :].unsqueeze(1)
+        print("End states size: ", end_states.size())
 
+        # reshape end_states to have the original number of bs, n, and 7 features
+        end_states = end_states.view(-1, n, end_states.shape[-1])
+        states = end_states
 
+        # states = torch.zeros_like(end_states)
+        # states[:,:,0:3] = end_states[:,:,0:3] # guide only for the position
+        indices = None
         return states, indices
 
     def score_to_output(self, model_output: List[torch.Tensor], guidance_score: torch.Tensor, indices):
         """
         function used by the guidance layer to convert model output to robot output
         """
+
+        # states_std = self.gudance_layer.states_std
+        trajectories = model_output[0]
+        end_states =  trajectories[:, -1, :].unsqueeze(1)
+        end_states = end_states.view(-1, self.guidance_layer.num_samples, end_states.shape[-1])
+
+        guidance_mask = guidance_score.squeeze(-1).to(trajectories.device)
+
+        # TODO finish this function
+
         model_output_ = model_output
 
         return model_output_

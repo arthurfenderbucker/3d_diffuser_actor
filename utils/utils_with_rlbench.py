@@ -174,9 +174,40 @@ class Actioner:
         self._instr_text = None
 
         self._policy.eval()
+        self.model = None
+        self.tokenizer = None
+
+    def load_encoding_model(self):
+
+
+        import transformers
+        self.model= transformers.CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.tokenizer = transformers.CLIPTokenizer.from_pretrained(
+            "openai/clip-vit-base-patch32"
+        )
+    
+    def encode_instruction(self, instr):
+
+        tokens = self.tokenizer(instr, padding="max_length")["input_ids"]
+        print( "tokens" )
+        print(tokens.size())
+        # lengths = [len(t) for t in tokens]
+        # if any(l > 72 for l in lengths):
+        #     raise RuntimeError(f"Too long instructions: {lengths}")
+
+        tokens = torch.tensor(tokens)#.to(args.device)
+        with torch.no_grad():
+            pred = self.model(tokens).last_hidden_state
+        print("pred")
+        print(pred.size())
+        instruction = pred.cpu()
+        return instruction
 
     def load_episode(self, task_str, variation):
         self._task_str = task_str
+        print(self._instructions[task_str][variation])
+        print(len(self._instructions[task_str][variation]))
+        print(self._instructions[task_str][variation].size())
         instructions = list(self._instructions[task_str][variation])
         # print("\n INSTRUCTIONS",self._instructions.keys())
         
@@ -234,7 +265,24 @@ class Actioner:
 
         # print(self._instr.shape)
         if self._instr is None:
-            raise ValueError()
+            self._task_id = torch.tensor(TASK_TO_ID["push_buttons"]).unsqueeze(0)
+            print(self._task_id.size())
+            # check if model 
+            try:
+                if self.model is None:
+                    print("loading models")
+                    self.load_encoding_model()
+                    print("encoding _instr_text: ", self._instr_text)
+                    self._instr = self.encode_instruction(self._instr_text)
+                else:
+                    self._instr = self.encode_instruction(self._instr_text)
+            except Exception as e:
+                print(e)
+                print("Could not encode instruction")
+
+
+                self._instr = torch.zeros((1, 53, 512))
+                
 
         self._instr = self._instr.to(rgbs.device)
         self._task_id = self._task_id.to(rgbs.device)
@@ -349,10 +397,13 @@ class RLBenchEnv:
                 self.guidance_wrapper.get_obs_relay_func(self.get_obs_action))
         # ================================
 
-        self.env = Environment(
-            self.action_mode, str(data_path), self.obs_config,
-            headless=headless
-        )
+        if self.guidance_wrapper.args.real_life:
+            self.env = self.guidance_wrapper.get_real_life_env()
+        else:
+            self.env = Environment(
+                self.action_mode, str(data_path), self.obs_config,
+                headless=headless
+            )
         self.image_size = image_size # image size that is rendered and transmitted
         self.obs_image_size = obs_image_size # models input size
     
@@ -426,7 +477,7 @@ class RLBenchEnv:
 
         attns = torch.Tensor([])
         for cam in self.apply_cameras:
-            u, v = obs_to_attn(obs, cam)
+            u, v = obs_to_attn(obs, cam) if not self.guidance_wrapper.args.real_life else (0, 0)
             attn = torch.zeros(1, 1, 1, self.image_size[0], self.image_size[1])
             if not (u < 0 or u > self.image_size[1] - 1 or v < 0 or v > self.image_size[0] - 1):
                 attn[0, 0, 0, v, u] = 1
@@ -498,16 +549,25 @@ class RLBenchEnv:
         self.guidance_wrapper.reset_seeds()
         self.env.launch()
 
-        task_type = task_file_to_task_class(task_str)
-        task = self.env.get_task(task_type)
-        task_variations = task.variation_count()
 
-        if num_variations > 0:
-            task_variations = np.minimum(num_variations, task_variations)
-            task_variations = range(task_variations)
+        if self.guidance_wrapper.args.real_life:
+            # task = self.guidance_wrapper.get_real_life_task(task_str)
+            task = self.env.get_task()
+            num_demos = 0
+            print(" \n\nLOADED REAL TASK \n\n")
+            task_variations = [0]
         else:
-            task_variations = glob.glob(os.path.join(self.data_path, task_str, "variation*"))
-            task_variations = [int(n.split('/')[-1].replace('variation', '')) for n in task_variations]
+            task_type = task_file_to_task_class(task_str)
+            task = self.env.get_task(task_type)
+
+            task_variations = task.variation_count()
+
+            if num_variations > 0:
+                task_variations = np.minimum(num_variations, task_variations)
+                task_variations = range(task_variations)
+            else:
+                task_variations = glob.glob(os.path.join(self.data_path, task_str, "variation*"))
+                task_variations = [int(n.split('/')[-1].replace('variation', '')) for n in task_variations]
 
         var_success_rates = {}
         var_num_valid_demos = {}
@@ -573,8 +633,9 @@ class RLBenchEnv:
                 demo = self.get_demo(task_str, variation, episode_index=demo_id)[0]
                 print(type(demo), demo)
                 num_valid_demos += 1
-            except Exception:
+            except Exception as e:
                 print(colored(f"Couldnt load demo {demo_id} for {task_str} variation {variation}","red"))
+                print(e)
                 # print(e)
                 # print()
                 # traceback.print_exc()
@@ -685,8 +746,13 @@ class RLBenchEnv:
             #         continue
 
             descriptions, obs = task.reset_to_demo(demo)
-            actioner.load_episode(task_str, variation)
-            actioner._instr_text = descriptions[actioner._instr_idx]
+            if self.guidance_wrapper.args.real_life:
+                actioner._instr_text = descriptions[0]
+
+                pass
+            else:
+                actioner.load_episode(task_str, variation)
+                actioner._instr_text = descriptions[actioner._instr_idx]
 
             self.guidance_wrapper.set_task_description(actioner._instr_text)
             print(colored(actioner._instr_text,"blue"))
@@ -754,7 +820,7 @@ class RLBenchEnv:
                     gripper_input,
                     interpolation_length=interpolation_length
                 )
-
+                
                 if verbose:
                     print(f"Step {step_id}")
 
@@ -789,10 +855,6 @@ class RLBenchEnv:
                         obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
 
                     max_reward = max(max_reward, reward)
-                    
-                    # -------- LOGGING guidance --------
-                    self.guidance_wrapper.publish_guidance_info(actioner._policy)
-                    # ----------------------------------
 
                     if reward == 1:
                         success_rate += 1
@@ -805,6 +867,10 @@ class RLBenchEnv:
                     print(task_str, demo, step_id, success_rate, e)
                     reward = 0
 
+                # -------- LOGGING guidance --------
+                self.guidance_wrapper.publish_guidance_info(actioner._policy)
+                # ----------------------------------
+                
             finished = True
             total_reward += max_reward
             if reward == 0:
@@ -867,8 +933,11 @@ class RLBenchEnv:
             print(f"{task_str}, variation {variation}, {num_demos} demos")
 
         self.env.launch()
-        task_type = task_file_to_task_class(task_str)
-        task = self.env.get_task(task_type)
+        if self.guidance_wrapper.args.real_life:
+            task = self.guidance_wrapper.get_real_life_task(task_str)
+        else:
+            task_type = task_file_to_task_class(task_str)
+            task = self.env.get_task(task_type)
         task.set_variation(variation)  # type: ignore
 
         success_rate = 0.0
