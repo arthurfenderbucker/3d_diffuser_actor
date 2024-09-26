@@ -188,9 +188,10 @@ class Actioner:
     
     def encode_instruction(self, instr):
 
+        if isinstance(instr, str):
+            instr = [instr]
+            
         tokens = self.tokenizer(instr, padding="max_length")["input_ids"]
-        print( "tokens" )
-        print(tokens.size())
         # lengths = [len(t) for t in tokens]
         # if any(l > 72 for l in lengths):
         #     raise RuntimeError(f"Too long instructions: {lengths}")
@@ -198,8 +199,6 @@ class Actioner:
         tokens = torch.tensor(tokens)#.to(args.device)
         with torch.no_grad():
             pred = self.model(tokens).last_hidden_state
-        print("pred")
-        print(pred.size())
         instruction = pred.cpu()
         return instruction
 
@@ -324,13 +323,43 @@ class Actioner:
 
 
 def obs_to_attn(obs, camera):
+    print("-===sv=======================================")
+    print(obs.misc[f"{camera}_camera_extrinsics"])
+    print(obs.misc[f"{camera}_camera_intrinsics"])
+
+    print("-===sv=======================================")
+
     extrinsics_44 = torch.from_numpy(
         obs.misc[f"{camera}_camera_extrinsics"]
     ).float()
     extrinsics_44 = torch.linalg.inv(extrinsics_44)
+
+
     intrinsics_33 = torch.from_numpy(
         obs.misc[f"{camera}_camera_intrinsics"]
     ).float()
+
+
+    # T = torch.tensor([[0, -1, 0, 0], [-1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]).float()
+    # rotate the extrinsics by 90 degrees around the z-axis
+    # extrinsics_44[:, :] = extrinsics_44[:, :] @ T
+    # extrinsics_44[:3, :3] = extrinsics_44[:3, :3] @ T[:3,:3]
+
+    # extrinsics_44[0, 3] , extrinsics_44[1, 3]=extrinsics_44[1, 3],  extrinsics_44[0, 3]
+
+    # flip x and y in the intrinsics
+    # extrinsics_44[0, 3] , extrinsics_44[1, 3]= extrinsics_44[1, 3], extrinsics_44[0, 3]
+    # intrinsics_33[0, 2] = -intrinsics_33[0, 2]
+    # intrinsics_33[1, 2] = -intrinsics_33[1, 2]
+
+
+    # intrinsics_33[0, 0],intrinsics_33[1, 1] = intrinsics_33[1, 1], intrinsics_33[0, 0]
+
+    intrinsics_33[0,2] = 0
+    intrinsics_33[1,2] = 0
+
+    
+    print(intrinsics_33)
     intrinsics_34 = F.pad(intrinsics_33, (0, 1, 0, 0))
     gripper_pos_3 = torch.from_numpy(obs.gripper_pose[:3]).float()
     gripper_pos_41 = F.pad(gripper_pos_3, (0, 1), value=1).unsqueeze(1)
@@ -341,6 +370,17 @@ def obs_to_attn(obs, camera):
     u = int((proj_3[0] / proj_3[2]).round())
     v = int((proj_3[1] / proj_3[2]).round())
 
+    print(u, v)
+    # cv2.imshow("img", obs.front_rgb)
+    import matplotlib.pyplot as plt
+    plt.imshow(obs.front_rgb)
+    w, h = obs.front_rgb.shape[:2]
+    # plt.scatter(h-v,w-u)
+    plt.scatter(u,v)
+
+    # plt.show()
+    plt.savefig("/root/motor_cortex/logs/test.png")
+    plt.close()
     return u, v
 
 
@@ -477,7 +517,7 @@ class RLBenchEnv:
 
         attns = torch.Tensor([])
         for cam in self.apply_cameras:
-            u, v = obs_to_attn(obs, cam) if not self.guidance_wrapper.args.real_life else (0, 0)
+            u, v = obs_to_attn(obs, cam)# if not self.guidance_wrapper.args.real_life else (0, 0)
             attn = torch.zeros(1, 1, 1, self.image_size[0], self.image_size[1])
             if not (u < 0 or u > self.image_size[1] - 1 or v < 0 or v > self.image_size[0] - 1):
                 attn[0, 0, 0, v, u] = 1

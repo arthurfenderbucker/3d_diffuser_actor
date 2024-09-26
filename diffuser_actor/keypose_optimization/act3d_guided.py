@@ -236,8 +236,9 @@ class Act3DGuided(Act3D):
 
             # ---------------------- guidance ----------------------
             # print("BEFORE ghost_pcd_masks_i[-1]: ", ghost_pcd_masks_i[-1].shape)
-            guidance_output = self.guidance_layer.guide([ghost_pcd_masks_i[-1], ghost_pcd_i], level=i)
-            ghost_pcd_masks_i[-1] = guidance_output[0]
+            if self.guidance_factor > 0.0:
+                guidance_output = self.guidance_layer.guide([ghost_pcd_masks_i[-1], ghost_pcd_i], level=i)
+                ghost_pcd_masks_i[-1] = guidance_output[0]
             # print("AFTER ghost_pcd_masks_i[-1]: ", ghost_pcd_masks_i[-1].shape)
 
             query_features = query_features[-1]
