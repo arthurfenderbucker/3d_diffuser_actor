@@ -850,6 +850,13 @@ class RLBenchEnv:
                         action = output["action"]
                         action[..., -1] = torch.round(action[..., -1])
                         action = action[-1].detach().cpu().numpy()
+                        if self.guidance_wrapper.args.pos_only:
+
+                            # fixing the orientation and gripper
+                            action[3:] = [0,0,0,1,0]
+                            print(action[3:])
+
+                        
                         # print(action)
                         collision_checking = self._collision_checking(task_str, step_id)
                         obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
