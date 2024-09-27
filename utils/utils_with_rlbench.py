@@ -204,9 +204,9 @@ class Actioner:
 
     def load_episode(self, task_str, variation):
         self._task_str = task_str
-        print(self._instructions[task_str][variation])
-        print(len(self._instructions[task_str][variation]))
-        print(self._instructions[task_str][variation].size())
+        # print(self._instructions[task_str][variation])
+        # print(len(self._instructions[task_str][variation]))
+        # print(self._instructions[task_str][variation].size())
         instructions = list(self._instructions[task_str][variation])
         # print("\n INSTRUCTIONS",self._instructions.keys())
         
@@ -355,11 +355,11 @@ def obs_to_attn(obs, camera):
 
     # intrinsics_33[0, 0],intrinsics_33[1, 1] = intrinsics_33[1, 1], intrinsics_33[0, 0]
 
-    intrinsics_33[0,2] = 0
-    intrinsics_33[1,2] = 0
+    # intrinsics_33[0,2] = 0
+    # intrinsics_33[1,2] = 0
 
     
-    print(intrinsics_33)
+    # print(intrinsics_33)
     intrinsics_34 = F.pad(intrinsics_33, (0, 1, 0, 0))
     gripper_pos_3 = torch.from_numpy(obs.gripper_pose[:3]).float()
     gripper_pos_41 = F.pad(gripper_pos_3, (0, 1), value=1).unsqueeze(1)
@@ -370,17 +370,17 @@ def obs_to_attn(obs, camera):
     u = int((proj_3[0] / proj_3[2]).round())
     v = int((proj_3[1] / proj_3[2]).round())
 
-    print(u, v)
-    # cv2.imshow("img", obs.front_rgb)
-    import matplotlib.pyplot as plt
-    plt.imshow(obs.front_rgb)
-    w, h = obs.front_rgb.shape[:2]
-    # plt.scatter(h-v,w-u)
-    plt.scatter(u,v)
+    # print(u, v)
+    # # cv2.imshow("img", obs.front_rgb)
+    # import matplotlib.pyplot as plt
+    # plt.imshow(obs.front_rgb)
+    # w, h = obs.front_rgb.shape[:2]
+    # # plt.scatter(h-v,w-u)
+    # plt.scatter(u,v)
 
-    # plt.show()
-    plt.savefig("/root/motor_cortex/logs/test.png")
-    plt.close()
+    # # plt.show()
+    # plt.savefig("/root/motor_cortex/logs/test.png")
+    # plt.close()
     return u, v
 
 
@@ -776,7 +776,6 @@ class RLBenchEnv:
                         print(colored(f"SKIPPING variation {variation} demo {demo_id} rollouts_sulfix {self.guidance_wrapper.rollouts_sulfix} rollout {rollout}","yellow"))
                         print(f"Best iteration {best_iter}")
                         continue
-            
             # if self.guidance_wrapper.args.skip_successful:
             #     results = self.guidance_wrapper.check_last_iters_rollout_status()
             #     if results is not None:
@@ -784,7 +783,7 @@ class RLBenchEnv:
             #         # total_reward += results["max_reward"]
             #         print(colored(f"Solved in previous iterations SKIPPING... variation {variation} demo {demo_id} rollouts_sulfix {self.guidance_wrapper.rollouts_sulfix} rollout {rollout} guidance_iter {self.guidance_wrapper.guidance_iter}","yellow"))
             #         continue
-
+            print("New Rollout")
             descriptions, obs = task.reset_to_demo(demo)
             if self.guidance_wrapper.args.real_life:
                 actioner._instr_text = descriptions[0]
@@ -861,6 +860,10 @@ class RLBenchEnv:
                     interpolation_length=interpolation_length
                 )
                 
+                # -------- LOGGING guidance --------
+                self.guidance_wrapper.publish_guidance_info(actioner._policy)
+                # ----------------------------------
+
                 if verbose:
                     print(f"Step {step_id}")
 
@@ -881,6 +884,9 @@ class RLBenchEnv:
                             #except:
                             #    terminate = True
                             #    pass
+                            if self.guidance_wrapper.args.pos_only:
+                                action[3:7] = [0,0,0,1] if actioner._policy._quaternion_format == "xyzw" else [1,0,0,0]
+                                
                             collision_checking = self._collision_checking(task_str, step_id)
                             obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
 
@@ -891,7 +897,6 @@ class RLBenchEnv:
                         action[..., -1] = torch.round(action[..., -1])
                         action = action[-1].detach().cpu().numpy()
                         if self.guidance_wrapper.args.pos_only:
-
                             # fixing the orientation and gripper
                             action[3:] = [0,0,0,1,0]
                             print(action[3:])
@@ -914,9 +919,6 @@ class RLBenchEnv:
                     print(task_str, demo, step_id, success_rate, e)
                     reward = 0
 
-                # -------- LOGGING guidance --------
-                self.guidance_wrapper.publish_guidance_info(actioner._policy)
-                # ----------------------------------
                 
             finished = True
             total_reward += max_reward

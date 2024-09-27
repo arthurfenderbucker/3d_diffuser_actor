@@ -45,7 +45,11 @@ lang_enhanced=0
 relative_action=0
 seed=0
 checkpoint=train_logs/diffuser_actor_gnfactor_ep5.pth
-quaternion_format=wxyz
+quaternion_format=xyzw #for policies trained locally
+
+# checkpoint=train_logs/diffuser_actor_gnfactor.pth
+# quaternion_format=wxyz # for the checkpoint provided by the authors
+
 
 trap "echo; exit" INT
 echo "ARGS: " ${filtered_args[@]}
@@ -75,7 +79,7 @@ for ((i=0; i<$num_ckpts; i++)); do
     --output_file eval_logs/$exp/seed$seed/${tasks[$i]}.json  \
     --use_instruction $use_instruction \
     --instructions instructions/peract/instructions.pkl \
-    --variations {0..60} \
+    --variations -1 \
     --max_tries $max_tries \
     --max_steps 20 \
     --seed $seed \

@@ -328,7 +328,9 @@ class Act3DGuided(Act3D):
         
         ghost_pcd_mask_i, ghost_pcd_i = model_output
 
-        guidance_mask = guidance_score.squeeze(-1).to(ghost_pcd_mask_i.device)
+        # guidance_mask = guidance_score.squeeze(-1).to(ghost_pcd_mask_i.device)
+        guidance_mask = guidance_score.to(ghost_pcd_mask_i.device)
+
 
         #normalize ghost_pcd_mask_i as a probability distribution
         models_norm, _ = torch.max(ghost_pcd_mask_i[~torch.isnan(ghost_pcd_mask_i)], dim=-1, keepdim=True)

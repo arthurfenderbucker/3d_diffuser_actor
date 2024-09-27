@@ -8,7 +8,7 @@ from diffuser_actor.utils.utils import (
     normalise_quat
 )
 from typing import List
-
+from scipy.spatial.transform import Rotation as R
 
 
 class DiffuserActorGuided(DiffuserActor):
@@ -29,7 +29,12 @@ class DiffuserActorGuided(DiffuserActor):
             score_to_output=self.score_to_output,
             stochastic=self.stochastic
         )
-    
+
+    def set_guidance_params(self, guidance_factor=0.0, stochastic=False):
+        self.guidance_factor = guidance_factor
+        self.stochastic = stochastic
+        self.guidance_layer.stochastic = stochastic
+
     def set_guidance_func_file(self, guidance_func_file):
         
         del self.guidance_layer
@@ -45,14 +50,6 @@ class DiffuserActorGuided(DiffuserActor):
             return False
         return True
     
-
-    def compute_trajectories(self, *args, **kwargs):
-        trajectory = super(DiffuserActorGuided, self).compute_trajectories(*args, **kwargs)
-        # Do something else here
-        print('Guided trajectories computed')
-        print(trajectory)
-
-        return trajectory   
 
     def compute_trajectory(
         self,
@@ -148,23 +145,25 @@ class DiffuserActorGuided(DiffuserActor):
 
             # ---------------------- adequating model input for guidance ----------------------
             # generate n trajectories by repeating the first dimensions of each input variable n times
-
-            trajectory_mask = trajectory_mask.repeat(self.guidance_layer.num_samples, 1)
-            rgb_obs = rgb_obs.repeat(self.guidance_layer.num_samples, 1, 1, 1, 1)
-            pcd_obs = pcd_obs.repeat(self.guidance_layer.num_samples, 1, 1, 1, 1)
-            instruction = instruction.repeat(self.guidance_layer.num_samples, 1, 1)
-            curr_gripper = curr_gripper.repeat(self.guidance_layer.num_samples, 1, 1)
+            if self.guidance_factor > 0.0:
+                trajectory_mask = trajectory_mask.repeat(self.guidance_layer.num_samples, 1)
+                rgb_obs = rgb_obs.repeat(self.guidance_layer.num_samples, 1, 1, 1, 1)
+                pcd_obs = pcd_obs.repeat(self.guidance_layer.num_samples, 1, 1, 1, 1)
+                instruction = instruction.repeat(self.guidance_layer.num_samples, 1, 1)
+                curr_gripper = curr_gripper.repeat(self.guidance_layer.num_samples, 1, 1)
             
                         
             # print input vars sizes for debugging
             print("-------------------------------------------- ")
-            print("final gt_trajectory size: ", gt_trajectory.size())
-            print("final trajectory_mask size: ", trajectory_mask.size())
-            print("final rgb_obs size: ", rgb_obs.size())
-            print("final pcd_obs size: ", pcd_obs.size())
-            print("final instruction size: ", instruction.size())
-            print("final curr_gripper size: ", curr_gripper.size())
+            print("final gt_trajectory size: \t", gt_trajectory.size(),"\t",gt_trajectory.device)
+            print("final trajectory_mask size: \t", trajectory_mask.size(),"\t",trajectory_mask.device)
+            print("final rgb_obs size: \t", rgb_obs.size(),"\t",rgb_obs.device)
+            print("final pcd_obs size: \t", pcd_obs.size(),"\t",pcd_obs.device)
+            print("final instruction size: \t", instruction.size(),"\t",instruction.device)
+            print("final curr_gripper size: \t", curr_gripper.size(),"\t",curr_gripper.device)
             print()
+            bs = gt_trajectory.size(0)
+
             # ---------------------- adequating model input for guidance ----------------------
             
             trajectories = self.compute_trajectory(
@@ -177,12 +176,35 @@ class DiffuserActorGuided(DiffuserActor):
 
             # ---------------------- guidance ----------------------
             # print traj sizes for debugging
+            print("batched trajectories size: ", trajectories.size())
+            print("self.guidance_factor: ", self.guidance_factor)
+
+            # reshape trajectories to have the sample in a dimention apart. (n_sample, bs, n, features)
+            trajectories = trajectories.view(self.guidance_layer.num_samples, bs, trajectories.size(1), trajectories.size(2))
             print("Trajectories size: ", trajectories.size())
-            guidance_output = self.guidance_layer.guide([trajectories])
-            trajectoriy = guidance_output[0]
+
+            if self.guidance_factor > 0.0:
+
+                # sample around the outputs and get scores for each saple assuming a distribution of the outputs
+                noisy_traj, noisy_traj_probs = self.guidance_layer.sample_around_outputs(trajectories, dims=[0,1,2,7], sigma=[0.1, 0.1, 0.1, 0.5])
+                guidance_output = self.guidance_layer.guide([noisy_traj, noisy_traj_probs])
+                trajectories = guidance_output[0]
+
+                if self.guidance_layer.guidance_func is not None:
+                    rotation = trajectories[:, -1, 3:7]
+                    position = trajectories[:, -1, 0:3]
+                    gripper = trajectories[:, -1, 7:]
+                    r = R.from_quat(rotation.cpu().detach().numpy())
+                    rotation_euler = r.as_euler('zyx', degrees=True)
+                    output_state = position.cpu().detach().numpy().tolist()[0] + rotation_euler.tolist()[0] + gripper.cpu().detach().numpy().tolist()[0]
+                    print("output_state: ", output_state)
+                    out = self.guidance_layer.querie_guidance_func(output_state, update_vars_dict=True)
+                    print(out)
+                else:
+                    print("guidance_func is None")
             # ---------------------- end of guidance ----------------------
         
-            return trajectoriy
+            return trajectories
         
         # Normalize all pos
         gt_trajectory = gt_trajectory.clone()
@@ -258,19 +280,37 @@ class DiffuserActorGuided(DiffuserActor):
         """
         function used by the guidance layer convert model output to robot state
         """
-        n = self.guidance_layer.num_samples 
+        n = self.guidance_layer.num_samples
         print("n: ", n)
         # guide only for the last position of the trajectory
         trajectories = model_output[0]
         print("Trajectories size: ", trajectories.size())
 
         # reshape the trajectories to get the last state of each trajectory
-        end_states =  trajectories[:, -1, :].unsqueeze(1)
-        print("End states size: ", end_states.size())
+        end_states =  trajectories[:,:, -1, :]
+        end_states = end_states.permute(1, 0, 2)
 
-        # reshape end_states to have the original number of bs, n, and 7 features
-        end_states = end_states.view(-1, n, end_states.shape[-1])
-        states = end_states
+        print("End states size: ", end_states.size())
+        
+        if self._quaternion_format == 'xyzw':
+            rot_quat = torch.concat([end_states[..., 4:7],end_states[..., 3:4]], dim=-1)
+        else:
+            rot_quat = end_states[..., 3:7]
+        # convert quaternion to euler angles
+        rot_quat_shape = rot_quat.size()
+        print(" rot_quat_shape",rot_quat_shape)
+        rot_quat = rot_quat.view(-1,rot_quat_shape[-1])
+        r = R.from_quat(rot_quat.cpu().detach().numpy())
+        rotation_euler = r.as_euler('zyx', degrees=True)
+        rotation_euler = rotation_euler.reshape(rot_quat_shape[:-1] + (3,))
+        print("rotation_euler size: ", rotation_euler.shape)
+        
+        # invert axis 0 and 1 to have the bs in the first axis
+        end_states_shape= end_states.size()
+        states = torch.zeros(end_states_shape[:-1] + (7,))
+        states[:,:,0:3] = end_states[:,:,0:3] # guide only for the position
+        states[:,:,3:6] = torch.tensor(rotation_euler).to(end_states.device)
+        states[:,:,7:] = end_states[:,:,7:] # guide only for the gripper
 
         # states = torch.zeros_like(end_states)
         # states[:,:,0:3] = end_states[:,:,0:3] # guide only for the position
@@ -284,13 +324,32 @@ class DiffuserActorGuided(DiffuserActor):
 
         # states_std = self.gudance_layer.states_std
         trajectories = model_output[0]
-        end_states =  trajectories[:, -1, :].unsqueeze(1)
-        end_states = end_states.view(-1, self.guidance_layer.num_samples, end_states.shape[-1])
+        end_states_probs = model_output[1]
+        print("Trajectories size: ", trajectories.size())
+        print("end_states_probs size: ", end_states_probs.size())
 
-        guidance_mask = guidance_score.squeeze(-1).to(trajectories.device)
+        samples, bs, n_wp, features = trajectories.size()
+        # end_states =  trajectories[:, -1, :].unsqueeze(1)
+        # end_states = end_states.view(-1, self.guidance_layer.num_samples, end_states.shape[-1])
 
-        # TODO finish this function
+        guidance_mask = guidance_score.to(end_states_probs.device).permute(1,0).unsqueeze(-1)
+        print("guidance_mask size: ", guidance_mask.size())
+        # model_output_ = model_output.copy()
 
-        model_output_ = model_output
+        combined_distribution = end_states_probs * (1.0-self.guidance_factor) + guidance_mask*self.guidance_factor
 
-        return model_output_
+        if self.guidance_layer.stochastic:
+            combined_distribution = self.guidance_layer.apply_stochastic(combined_distribution, 10)
+
+        print("combined_distribution size: ", combined_distribution.size())
+        # select the best trajectory based on the combined_distribution
+        best_traj_idx = torch.argmax(combined_distribution, dim=0)
+        print("Best trajectory index: ", best_traj_idx)
+        
+        bs_indices = torch.arange(bs).unsqueeze(1).expand(bs, n_wp)
+        n_indices = torch.arange(n_wp).unsqueeze(0).expand(bs, n_wp)
+
+        best_traj = trajectories[best_traj_idx, bs_indices, n_indices]
+        print("Best trajectory size: ", best_traj.size())
+
+        return [best_traj, combined_distribution]
