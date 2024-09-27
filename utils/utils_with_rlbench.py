@@ -902,7 +902,7 @@ class RLBenchEnv:
                             print(action[3:])
 
                         
-                        # print(action)
+                        print("ACTION: ",action)
                         collision_checking = self._collision_checking(task_str, step_id)
                         obs, reward, terminate, _ = move(action, collision_checking=collision_checking)
 

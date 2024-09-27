@@ -339,6 +339,7 @@ class DiffuserActorGuided(DiffuserActor):
         combined_distribution = end_states_probs * (1.0-self.guidance_factor) + guidance_mask*self.guidance_factor
 
         if self.guidance_layer.stochastic:
+            print("Applying stochastic")
             combined_distribution = self.guidance_layer.apply_stochastic(combined_distribution, 10)
 
         print("combined_distribution size: ", combined_distribution.size())

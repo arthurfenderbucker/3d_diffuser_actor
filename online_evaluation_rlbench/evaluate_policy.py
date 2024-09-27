@@ -136,8 +136,8 @@ def load_models(args):
         args.gripper_loc_bounds_file,
         task=task, buffer=args.gripper_loc_bounds_buffer,
     )
+    print("gripper_loc_bounds", gripper_loc_bounds)
     # print(" ===========gripper_loc_bounds ", gripper_loc_bounds)
-    # gripper_loc_bounds[0,2] = 0.07
     if args.test_model == "3d_diffuser_actor":
         if args.use_guidance:
             model = DiffuserActorGuided(
