@@ -180,11 +180,11 @@ class DiffuserActorGuided(DiffuserActor):
             print("self.guidance_factor: ", self.guidance_factor)
 
             # reshape trajectories to have the sample in a dimention apart. (n_sample, bs, n, features)
-            trajectories = trajectories.view(self.guidance_layer.num_samples, bs, trajectories.size(1), trajectories.size(2))
-            print("Trajectories size: ", trajectories.size())
 
             if self.guidance_factor > 0.0:
 
+                trajectories = trajectories.view(self.guidance_layer.num_samples, bs, trajectories.size(1), trajectories.size(2))
+                print("Trajectories size: ", trajectories.size())
                 # sample around the outputs and get scores for each saple assuming a distribution of the outputs
                 noisy_traj, noisy_traj_probs = self.guidance_layer.sample_around_outputs(trajectories, dims=[0,1,2,7], sigma=[0.1, 0.1, 0.1, 0.5])
                 guidance_output = self.guidance_layer.guide([noisy_traj, noisy_traj_probs])
