@@ -190,6 +190,27 @@ class DiffuserActorGuided(DiffuserActor):
                 guidance_output = self.guidance_layer.guide([noisy_traj, noisy_traj_probs])
                 trajectories = guidance_output[0]
 
+                if trajectories.size(0) != bs:
+                    print("TRAJECTORIES SIZE ERROR")
+                    print("Trajectories size: ", trajectories.size())
+                    if len(trajectories.size()) == 4:
+                        trajectories = trajectories[0]
+                    elif len(trajectories.size()) == 3:
+                        trajectories = trajectories[:bs]
+                    else:
+                        print("Trajectories size: ", trajectories.size())
+
+                    # samples, bs, n_wp, features = trajectories.size()
+                    # combined_distribution = guidance_output[1]
+                    # best_traj_idx = torch.argmax(combined_distribution, dim=0)
+                    # print("Best trajectory index: ", best_traj_idx)
+                    
+                    # bs_indices = torch.arange(bs).unsqueeze(1).expand(bs, n_wp)
+                    # n_indices = torch.arange(n_wp).unsqueeze(0).expand(bs, n_wp)
+
+                    # best_traj = trajectories[best_traj_idx, bs_indices, n_indices]
+                    # print("Best trajectory size: ", best_traj.size())
+
                 if self.guidance_layer.guidance_func is not None:
                     rotation = trajectories[:, -1, 3:7]
                     position = trajectories[:, -1, 0:3]

@@ -87,7 +87,7 @@ for ((i=0; i<$num_ckpts; i++)); do
     --instructions instructions/peract/instructions.pkl \
     --variations -1 \
     --max_tries $max_tries \
-    --max_steps 20 \
+    --max_steps 10 \
     --seed $seed \
     --gripper_loc_bounds_file $gripper_loc_bounds_file \
     --gripper_loc_bounds_buffer 0.08 ${filtered_args[@]};
