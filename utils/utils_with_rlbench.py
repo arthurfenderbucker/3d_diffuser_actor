@@ -749,6 +749,7 @@ class RLBenchEnv:
         max_reward=0.0
         finished = False
         for rollout in range(self.rollouts_per_demo):
+            self.guidance_wrapper.reset_seeds()
 
             self.guidance_wrapper.set_experiment(task_str, variation, demo_id, rollout)
             
