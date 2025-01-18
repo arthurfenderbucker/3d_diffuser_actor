@@ -1,5 +1,6 @@
 """Online evaluation script on RLBench."""
-import sys, signal # handling interruptions
+import sys
+import signal # handling interruptions
 
 def signal_handler(signal, frame):
     print("\nprogram exiting gracefully")
@@ -88,6 +89,7 @@ class Arguments(tap.Tap):
     # ak_topic: str = 'perception_ak'
     use_guidance: int = 0
     load_weights: int = 1
+    real_gripper_loc_bounds_file: str = "tasks/74_hiveformer_tasks_location_bounds.json"
     # guidance_factor: float = 0.5
     # generate_guidance_code: int = 0
     # raw_policy: int = 0 #prevents loading checkpoint
@@ -270,6 +272,8 @@ def main():
         
     )
 
+    
+    
 
     # Save results here
     output_file = env.guidance_wrapper.change_outputfile(args.output_file) 
@@ -293,6 +297,15 @@ def main():
 
     for task_str in args.tasks:
         print("starting task:", task_str)
+
+        if hasattr(env, "set_policy_gripper_loc_bounds") and hasattr(env, "set_real_gripper_loc_bounds"):
+            real_gripper_loc_bounds = get_gripper_loc_bounds(
+                args.real_gripper_loc_bounds_file,
+                task=task_str, buffer=args.gripper_loc_bounds_buffer,
+            )
+            env.set_real_gripper_loc_bounds(real_gripper_loc_bounds)
+            env.set_policy_gripper_loc_bounds(model.gripper_loc_bounds) 
+
         var_success_rates = env.evaluate_task_on_multiple_variations(
             task_str,
             max_steps=(
